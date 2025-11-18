@@ -135,7 +135,7 @@ export function BoardsListPage() {
                   style={{ width: 120, cursor: "pointer" }}
                   onClick={() => handleSort("color")}
                 >
-                  Color{" "}
+                  Label{" "}
                   {sortBy === "color" &&
                     (sortDir === "asc" ? "▲" : "▼")}
                 </th>
