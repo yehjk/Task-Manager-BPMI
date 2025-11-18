@@ -155,6 +155,13 @@ export const useBoardStore = create((set, get) => ({
     }));
   },
 
+  // Updates a task (e.g., title) via PATCH /tasks/:id and updates local state.
+  async updateTask(taskId, partial) {
+    const task = await apiClient.patch(`/tasks/${taskId}`, partial);
+    get().updateTaskFromApi(task);
+    return task;
+  },
+
   // Local-only helper: updates task when we want to change it in memory.
   updateTaskLocal(taskId, columnId, position) {
     set((state) => ({
