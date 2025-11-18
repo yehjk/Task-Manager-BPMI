@@ -104,7 +104,7 @@ export function BoardPage() {
 
           {/* Board color picker – only dots, no names */}
           <div className="d-flex align-items-center gap-2">
-            <span className="small text-muted me-2">Board color:</span>
+            <span className="small text-muted me-2">Label:</span>
             {BOARD_COLORS.map((color) => (
               <button
                 key={color}
