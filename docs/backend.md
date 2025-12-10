@@ -1,126 +1,112 @@
+# Task Manager – Backend Documentation
 
-# Backend Documentation — Task Manager System
+## 1. Overview
 
-## Overview
-The backend of the Task Manager System is built using **Node.js**, **Express**, and **MongoDB (Mongoose)**, structured as a **microservice architecture** consisting of:
+The **Task Manager System (MVP)** backend is built using a **microservice architecture** consisting of:
 
-- **Auth Service (4001)** — mock authentication, JWT issuing.
-- **Boards Service (4002)** — boards, columns, tasks, ticket fields, drag & drop.
-- **Audit Service (4003)** — centralized audit logging.
-- **API Gateway (3001)** — proxies requests from the client to microservices.
+- **API Gateway** – entry point for all API requests  
+- **Auth Service** – mock authentication for Sprint 2  
+- **Boards Service** – boards, columns, tasks, ticket updates  
+- **Audit Service** – audit logging  
+- **MongoDB** – persistent NoSQL database  
 
-Each service is fully isolated and runs independently, communicating only via HTTP.
-
----
-
-## Technologies Used
-
-- **Node.js 20+**
-- **Express.js**
-- **MongoDB + Mongoose ODM**
-- **JSON Web Tokens (JWT)**
-- **http-proxy-middleware** (API Gateway)
-- **Zod-like custom validation through HttpError**
+The backend exposes a public REST API consumed by the React frontend.
 
 ---
 
-## Architecture Diagram (High-Level)
+## 2. Technology Stack
+
+| Category        | Technology                  |
+|----------------|------------------------------|
+| Runtime        | Node.js (ES modules)         |
+| Framework      | Express.js                   |
+| Database       | MongoDB + Mongoose           |
+| Auth           | JSON Web Tokens (JWT)        |
+| Proxy          | http-proxy-middleware        |
+| UUIDs          | uuid v4                      |
+| Config         | dotenv                       |
+
+---
+
+## 3. Microservice Architecture
 
 ```
-Client (React SPA)
-       |
-       v
-API Gateway (3001)
- ├── /auth/*   → Auth Service (4001)
- ├── /boards/* → Boards Service (4002)
- └── /audit/*  → Audit Service (4003)
+client (React SPA)
+       ↓
+ API Gateway (3001)
+       ↓────────────↓──────────────↓
+ Auth Service   Boards Service   Audit Service
+ (4001)         (4002)           (4003)
+       ↓────────────↓──────────────↓
+               MongoDB
 ```
-
----
-
-## Microservices
-
----
-
-# 1. Auth Service (4001)
-
-### Responsibilities
-- Issues JWT tokens.
-- Provides a mock login endpoint for development.
-
-### Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/auth/login-mock` | Returns a fake JWT + mock user |
-
-### Token format
-
-Payload contains:
-
-```json
-{
-  "id": "user-1",
-  "name": "Demo User",
-  "email": "demo@example.com"
-}
-```
-
-Expiration: **7 days**
-
----
-
-# 2. Boards Service (4002)
 
 ### Responsibilities
 
-- CRUD for **boards**
-- CRUD for **columns**
-- CRUD for **tasks** (with ticket fields)
-- Drag & drop task movement
-- Ticket system fields:
-  - `description`
-  - `assigneeId`
-
-### Data Models
+| Service         | Responsibility |
+|----------------|----------------|
+| API Gateway    | Routing, proxying, CORS, no business logic |
+| Auth Service   | Login (mock JWT in Sprint 2) |
+| Boards Service | Boards, columns, tasks, ticket fields |
+| Audit Service  | Central audit logging |
+| MongoDB        | Persistent datastore |
 
 ---
 
-## Board Model
+## 4. Project Structure
 
-```js
+```
+server/
+├── src/
+│   ├── gateway.js
+│   ├── auth-service.js
+│   ├── boards-service.js
+│   ├── audit-service.js
+│   ├── db/
+│   │   ├── mongo.js
+│   │   └── models/
+│   │       ├── AuditEntry.js
+│   │       ├── Board.js
+│   │       ├── Column.js
+│   │       ├── Label.js
+│   │       └── Task.js
+│   ├── middleware/
+│   │   ├── authRequired.js
+│   │   ├── errorHandler.js
+│   │   └── notFoundHandler.js
+│   ├── modules/
+│   │   ├── audit/
+│   │   │   ├── audit-routes.js
+│   │   │   └── audit-store.js
+│   │   ├── auth/auth-routes.js
+│   │   ├── boards/boards-routes.js
+│   │   └── task/task-routes.js
+│   └── utils/httpError.js
+└── package.json
+```
+
+---
+
+## 5. Database Layer (MongoDB + Mongoose)
+
+### 5.1 Models
+
+#### Board
+
+```
 {
   id: String,
   name: String,
-  labels: [{ id, name }],
-  columns: [{ id, title, position }],
+  labels: [ { id, name } ],
+  columns: [ { id, title, position } ],
   ownerEmail: String,
-  createdAt: Date,
-  updatedAt: Date
+  createdAt, updatedAt
 }
 ```
 
----
+#### Task
 
-## Column Model
-
-Embedded inside `Board.columns`:
-
-```js
-{
-  id: String,
-  title: String,
-  position: Number
-}
 ```
-
----
-
-## Task Model
-
-Standalone Mongo collection:
-
-```js
 {
   id: String,
   boardId: String,
@@ -132,43 +118,14 @@ Standalone Mongo collection:
 }
 ```
 
----
+#### AuditEntry
 
-## Task Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/boards/:id/tasks` | Get tasks for a board |
-| POST | `/boards/:id/tasks` | Create task |
-| PATCH | `/tasks/:id` | Update title only (legacy) |
-| PATCH | `/tickets/:id` | Update title, description, assigneeId |
-| GET | `/tickets/:id` | Get full ticket |
-| PATCH | `/tasks/:id/move` | Move drag & drop |
-| DELETE | `/tasks/:id` | Delete + normalize |
-
-### Task move logic
-
-- Insert task into new position
-- Renumber tasks in new column
-- Renumber tasks in old column (if moved)
-
----
-
-# 3. Audit Service (4003)
-
-### Responsibilities
-
-- Store audit log entries from Boards service.
-- Provide filterable audit retrieval.
-
-### Audit Schema
-
-```js
+```
 {
   id: String,
-  actor: String,        // usually user email
-  action: String,       // TASK_CREATED, TICKET_UPDATED, etc.
-  entity: String,       // task, ticket
+  actor: String,
+  action: String,
+  entity: String,
   entityId: String,
   ts: ISOString
 }
@@ -176,92 +133,184 @@ Standalone Mongo collection:
 
 ---
 
-# 4. API Gateway (3001)
+## 6. API Gateway
 
 ### Responsibilities
 
-- Single entry point for the frontend.
-- Proxies requests to appropriate microservices.
-- Does not parse JSON body (to avoid interfering with proxied requests).
+- Proxies all incoming requests to microservices
+- Handles CORS for the frontend
+- Does **not** parse JSON bodies
+- Rewrites paths for `/auth/*`
+- Exposes `/health` and `/api` endpoints
 
-Proxy rules:
+### Proxy Mapping
 
-| Path | Proxied To |
-|------|------------|
-| `/auth/*` | Auth Service |
-| `/boards`, `/columns`, `/tasks`, `/tickets` | Boards Service |
-| `/audit` | Audit Service |
-
-Health endpoints:
-
-- `GET /health`
-- `GET /api`
-
----
-
-# Error Handling
-
-All services use a shared error format:
-
-```json
-{
-  "error": "TASK_NOT_FOUND",
-  "message": "Task not found"
-}
-```
-
-Errors are raised using:
-
-```js
-throw new HttpError(404, "TASK_NOT_FOUND", "Task not found");
-```
+| Gateway Path   | Service Target |
+|----------------|----------------|
+| `/auth/*`      | Auth Service   |
+| `/boards/*`    | Boards Service |
+| `/columns/*`   | Boards Service |
+| `/tasks/*`     | Boards Service |
+| `/tickets/*`   | Boards Service |
+| `/audit/*`     | Audit Service  |
 
 ---
 
-# Authentication Flow
+## 7. Auth Service
 
-The API Gateway does **not** validate tokens.  
-Instead, each microservice validates JWT via `authRequired` middleware.
+Provides mock authentication.
 
-Unauthenticated requests return:
+### Endpoint
 
-```json
+#### `POST /auth/login-mock`
+
+Returns:
+
+```
 {
-  "error": "AUTH_REQUIRED",
-  "message": "Authorization token missing"
+  token: <jwt>,
+  user: {
+    id,
+    name,
+    email
+  }
 }
 ```
 
 ---
 
-# Development Notes
+## 8. Boards Service
 
-### Why Microservices?
+Handles boards, columns, tasks and full ticket functionality.
 
-- Independent deployment
-- Faster development iteration
-- Backend is clearly separated by responsibility
-- Mimics real Enterprise architecture
+### 8.1 Board Endpoints
 
-### Why No JSON Middleware in Gateway?
-
-Because gateway proxies raw bodies; JSON parsing would break forwarded requests.
+| Method | Path          | Description |
+|--------|--------------|-------------|
+| GET    | `/boards`     | List boards |
+| POST   | `/boards`     | Create board |
+| PATCH  | `/boards/:id` | Update name |
+| DELETE | `/boards/:id` | Delete board + its tasks |
 
 ---
 
-# Running the Backend
+### 8.2 Columns Endpoints
 
-1. Install dependencies:
+| Method | Path                   | Description |
+|--------|------------------------|-------------|
+| GET    | `/boards/:id/columns`  | List columns |
+| POST   | `/columns`             | Create column |
+| PATCH  | `/columns/:id`         | Rename or move column |
+| DELETE | `/columns/:id`         | Remove column |
+
+---
+
+### 8.3 Tasks Endpoints
+
+| Method | Path                     | Description |
+|--------|--------------------------|-------------|
+| GET    | `/boards/:id/tasks`      | List tasks |
+| POST   | `/boards/:id/tasks`      | Create task |
+| PATCH  | `/tasks/:id`             | Update title (legacy) |
+| PATCH  | `/tickets/:id`           | Update ticket fields |
+| PATCH  | `/tasks/:id/move`        | Move task |
+| DELETE | `/tasks/:id`             | Delete task |
+
+---
+
+## 9. Audit Service
+
+Stores and retrieves audit entries.
+
+### Endpoints
+
+| Method | Path      | Description |
+|--------|-----------|-------------|
+| POST   | `/audit`  | Create audit entry |
+| GET    | `/audit`  | Filter by entity/entityId |
+
+---
+
+## 10. Error Handling
+
+Shared across all microservices:
+
+### HttpError
+
+- Custom error type with `status` and `code`.
+
+### errorHandler
+
+Returns JSON:
+
+```
+{
+  "error": "<CODE>",
+  "message": "<MESSAGE>"
+}
+```
+
+### notFoundHandler
+
+Unified 404 response.
+
+---
+
+## 11. Authentication Middleware
+
+### `authRequired`
+
+- Expects header: `Authorization: Bearer <token>`
+- Verifies JWT
+- Sets `req.user`
+- Rejects unauthorized access
+
+Protected routes include all board, task, column, ticket and audit endpoints.
+
+---
+
+## 12. Running Backend
+
+Install dependencies:
 
 ```
 npm install
 ```
 
-2. Start all services:
+Start all backend services:
 
 ```
 npm run dev:backend
 ```
 
+This launches:
 
+- **Gateway**  
+- **Auth Service**  
+- **Boards Service**  
+- **Audit Service**
 
+---
+
+## 13. Team Responsibilities
+
+| Student            | Role |
+|--------------------|------|
+| Lucie Krausova     | PM, Analyst, Tester |
+| Nurbol Kapesh      | BE/FE Developer |
+| Oles Nesterenko    | BE Developer |
+| Danil Chsherbina   | BE Developer |
+| Maksym Popov       | FE Developer |
+| Zubaydo Khalimova  | FE Developer |
+
+---
+
+## 14. Summary
+
+The backend is structured for scalability, clarity, and microservice separation:
+
+- Modular services  
+- MongoDB persistence  
+- JWT authentication  
+- Audit logging  
+- Full CRUD for boards, columns, tasks, ticket fields  
