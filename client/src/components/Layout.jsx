@@ -1,8 +1,7 @@
 // /client/src/components/Layout.jsx
-// Top-level layout for all pages:
-// - dark navbar with app name
-// - user email + Logout button
-// - <Outlet /> for nested routes
+// Application shell with a narrow top navbar and main content area.
+// Shows current user info and logout button when authenticated.
+
 import React from "react";
 import { Outlet, Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/auth-store.js";
@@ -19,30 +18,36 @@ export function Layout() {
 
   return (
     <>
-      <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div className="container-fluid">
-          <Link className="navbar-brand d-flex align-items-center" to="/">
-            <i className="mdi mdi-view-kanban-outline me-2"></i>
-            Task Manager
+      {/* Top navbar with app name and user area */}
+      <nav className="navbar tm-navbar">
+        <div className="container tm-navbar-inner">
+          {/* App logo / title */}
+          <Link
+            className="navbar-brand d-flex align-items-center tm-logo"
+            to="/"
+          >
+            <i className="mdi mdi-view-kanban-outline me-2" />
+            <span>Task Manager</span>
           </Link>
 
-          <div className="d-flex align-items-center">
+          {/* User info and auth actions */}
+          <div className="d-flex align-items-center gap-2 tm-user-area">
             {user && (
-              <span className="navbar-text me-3 small">
+              <span className="navbar-text small d-flex align-items-center">
                 <i className="mdi mdi-account-circle-outline me-1" />
                 {user.email}
               </span>
             )}
             {user ? (
               <button
-                className="btn btn-outline-light btn-sm"
+                className="btn btn-outline-dark btn-sm"
                 onClick={handleLogout}
               >
                 <i className="mdi mdi-logout me-1" />
                 Logout
               </button>
             ) : (
-              <Link className="btn btn-outline-light btn-sm" to="/login">
+              <Link className="btn btn-outline-dark btn-sm" to="/login">
                 Login
               </Link>
             )}
@@ -50,7 +55,8 @@ export function Layout() {
         </div>
       </nav>
 
-      <main className="container-fluid py-3">
+      {/* Main routed content */}
+      <main className="tm-main container py-4">
         <Outlet />
       </main>
     </>

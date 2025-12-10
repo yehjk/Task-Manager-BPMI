@@ -1,15 +1,12 @@
 // /client/src/pages/BoardPage.jsx
-// Board detail page. Shows columns and tasks.
-// Board color is chosen from a small palette and stored as the first label.
+// Board detail page. Shows a single board with its columns and tasks.
 
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useBoardStore } from "../store/board-store.js";
 import { ColumnsSection } from "../components/ColumnsSection.jsx";
 import { TaskModal } from "../components/TaskModal.jsx";
-
-// Fixed palette of allowed board colors.
-const BOARD_COLORS = ["#ef4444", "#22c55e", "#3b82f6", "#eab308"];
+import { TextInputModal } from "../components/ModalDialogs.jsx";
 
 export function BoardPage() {
   const { boardId } = useParams();
@@ -23,25 +20,26 @@ export function BoardPage() {
     tasks,
     loadingBoard,
     deleteTask,
-    setBoardColor,
     labels,
+    createLabel,
+    updateLabel,
   } = useBoardStore();
 
   const [selectedTask, setSelectedTask] = useState(null);
 
-  // Find board object by id (for display name and color).
   const board = boards.find((b) => b.id === boardId);
+  const boardLabel = board?.labels?.[0]?.name || labels[0]?.name || null;
 
-  // Current board color is taken from its first label (if any).
-  const currentColor =
-    board?.labels?.[0]?.color || labels[0]?.color || null;
+  const [labelModal, setLabelModal] = useState({
+    show: false,
+    name: "",
+    error: "",
+  });
 
   useEffect(() => {
-    // If boards list is empty, load it first.
     if (!boards.length) {
       loadBoards();
     }
-    // Load columns / tasks / labels for this board.
     loadBoardDetails(boardId);
   }, [boardId, boards.length, loadBoards, loadBoardDetails]);
 
@@ -56,7 +54,7 @@ export function BoardPage() {
   if (!board) {
     return (
       <div className="alert alert-danger mt-3">
-        Board not found.{" "}
+        Board not found{" "}
         <button
           className="btn btn-link p-0 align-baseline"
           onClick={() => navigate("/boards")}
@@ -73,62 +71,101 @@ export function BoardPage() {
 
   const handleTaskDelete = async () => {
     if (!selectedTask) return;
-    if (!window.confirm(`Delete task "${selectedTask.title}"?`)) return;
     try {
       await deleteTask(selectedTask.id);
     } catch (err) {
       console.error(err);
-      alert("Failed to delete task");
-      return;
     }
     setSelectedTask(null);
   };
 
-  const handleColorClick = async (color) => {
+  const openEditLabelModal = () => {
+    const current = boardLabel || "";
+    setLabelModal({ show: true, name: current, error: "" });
+  };
+
+  const handleLabelSubmit = async () => {
+    const name = labelModal.name.trim();
+    if (!name) {
+      setLabelModal((s) => ({
+        ...s,
+        error: "Label cannot be empty.",
+      }));
+      return;
+    }
+
     try {
-      await setBoardColor(board.id, color);
+      const existingLabel = board.labels && board.labels[0];
+
+      if (existingLabel) {
+        await updateLabel(board.id, existingLabel.id, name);
+      } else {
+        await createLabel(board.id, name);
+      }
+
+      await loadBoardDetails(boardId);
+      setLabelModal({ show: false, name: "", error: "" });
     } catch (err) {
       console.error(err);
-      alert("Failed to change board color");
+      setLabelModal((s) => ({
+        ...s,
+        error: err.message || "Failed to update board label.",
+      }));
     }
   };
 
+  const ownerEmail =
+    board.owner?.email || board.ownerEmail || "Unknown owner";
+  const createdAtText = board.createdAt
+    ? new Date(board.createdAt).toLocaleString()
+    : "Unknown date";
+
   return (
     <>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h4 className="mb-1 d-flex align-items-center">
-            <i className="mdi mdi-view-kanban-outline me-2" />
-            {board.name}
-          </h4>
+      {/* Board header with name, owner, created date and main label */}
+      <div className="text-center mb-4">
+        <h4 className="mb-1 d-flex justify-content-center align-items-center">
+          <i className="mdi mdi-view-kanban-outline me-2" />
+          {board.name}
+        </h4>
 
-          {/* Board color picker – only dots, no names */}
-          <div className="d-flex align-items-center gap-2">
-            <span className="small text-muted me-2">Label:</span>
-            {BOARD_COLORS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                className="btn btn-sm"
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: "999px",
-                  padding: 0,
-                  backgroundColor: color,
-                  border:
-                    currentColor === color
-                      ? "2px solid #111"
-                      : "1px solid #ddd",
-                }}
-                onClick={() => handleColorClick(color)}
-                aria-label={`Set board color ${color}`}
-              />
-            ))}
-          </div>
+        <div className="small text-muted mb-2 d-flex justify-content-center align-items-center flex-wrap gap-2">
+          <span>
+            <i className="mdi mdi-account-outline me-1" />
+            Owner: {ownerEmail}
+          </span>
+
+          <span className="text-muted">•</span>
+
+          <span>
+            <i className="mdi mdi-calendar-clock-outline me-1" />
+            Created: {createdAtText}
+          </span>
+
+          <span className="text-muted">•</span>
+
+          <span className="d-flex align-items-center">
+            <span className="me-1">Label:</span>
+            {boardLabel ? (
+              <span className="badge bg-secondary mb-0">
+                {boardLabel}
+              </span>
+            ) : (
+              <span className="text-muted">No label</span>
+            )}
+          </span>
         </div>
 
-        <div>
+        {/* Board actions: edit label and navigate back to boards list */}
+        <div className="d-flex justify-content-center align-items-center gap-2 mt-1">
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            onClick={openEditLabelModal}
+          >
+            <i className="mdi mdi-pencil-outline me-1" />
+            Edit label
+          </button>
           <button
             className="btn btn-outline-secondary btn-sm"
             onClick={() => navigate("/boards")}
@@ -139,7 +176,7 @@ export function BoardPage() {
         </div>
       </div>
 
-      {/* Columns and tasks only – no labels panel on the right */}
+      {/* Columns and tasks section */}
       <div className="row">
         <div className="col-md-12 mb-3">
           <ColumnsSection
@@ -155,10 +192,28 @@ export function BoardPage() {
       {selectedTask && (
         <TaskModal
           task={selectedTask}
+          boardId={boardId}
           onClose={() => setSelectedTask(null)}
           onDelete={handleTaskDelete}
         />
       )}
+
+      {/* Modal for editing the board text label */}
+      <TextInputModal
+        show={labelModal.show}
+        title="Edit board label"
+        label="Board label"
+        value={labelModal.name}
+        onChange={(val) =>
+          setLabelModal((s) => ({ ...s, name: val, error: "" }))
+        }
+        onCancel={() =>
+          setLabelModal({ show: false, name: "", error: "" })
+        }
+        onSubmit={handleLabelSubmit}
+        submitLabel="Save"
+        error={labelModal.error}
+      />
     </>
   );
 }

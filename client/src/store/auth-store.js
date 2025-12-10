@@ -1,9 +1,10 @@
 // /client/src/store/auth-store.js
-// Global auth state built with Zustand.
-// Stores current user + token and knows how to:
-// - initialize from localStorage on app start
-// - call POST /auth/login-mock
-// - logout and clear storage
+// Global auth state using Zustand.
+// Handles:
+// - restoring user and token from localStorage
+// - POST /auth/login-mock
+// - logout and clearing localStorage
+
 import { create } from "zustand";
 import { apiClient } from "../api/api-client.js";
 
@@ -16,6 +17,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const rawUser = window.localStorage.getItem("tm_user");
       const token = window.localStorage.getItem("tm_token");
+
       if (token && rawUser) {
         const user = JSON.parse(rawUser);
         set({ user, token, isReady: true });
@@ -38,9 +40,5 @@ export const useAuthStore = create((set, get) => ({
     window.localStorage.removeItem("tm_token");
     window.localStorage.removeItem("tm_user");
     set({ user: null, token: null });
-  },
-
-  isAuthenticated() {
-    return !!get().token;
   },
 }));

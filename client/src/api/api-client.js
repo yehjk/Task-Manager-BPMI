@@ -1,10 +1,11 @@
 // /client/src/api/api-client.js
-// Small wrapper around fetch used by the whole React app.
+// Small wrapper around fetch used across the React app.
 // Responsibilities:
 // - prepend API base URL
 // - attach JSON headers
 // - attach JWT from localStorage
-// - on 401: clear auth and redirect user to /login
+// - handle 401 by clearing auth and redirecting to /login
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
 
@@ -14,7 +15,7 @@ async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", "application/json");
 
-  // Read token that was stored by auth-store (mock login).
+  // Attach stored JWT if available
   const token = window.localStorage.getItem("tm_token");
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -27,8 +28,7 @@ async function request(path, options = {}) {
 
   const res = await fetch(url, fetchOptions);
 
-  // Central 401 handling — if backend says "unauthorized",
-  // we drop the token and force user to re-login.
+  // Handle unauthorized state globally
   if (res.status === 401) {
     window.localStorage.removeItem("tm_token");
     window.localStorage.removeItem("tm_user");
@@ -41,6 +41,7 @@ async function request(path, options = {}) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
 
+  // Handle non-OK responses
   if (!res.ok) {
     const message = data?.message || data?.error || "API error";
     const error = new Error(message);

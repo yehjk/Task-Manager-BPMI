@@ -1,6 +1,5 @@
 // /client/src/components/TaskCard.jsx
-// Single draggable task card.
-// Uses dnd-kit useSortable so it can be dragged between columns.
+// Single draggable task card using dnd-kit sortable API.
 
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -17,7 +16,7 @@ export function TaskCard({ task, onClick }) {
   } = useSortable({
     id: task.id,
     data: {
-      type: "task", // used in drag handlers to distinguish tasks vs columns
+      type: "task",       // used in drag logic to distinguish tasks from columns
       columnId: task.columnId,
     },
   });
@@ -41,9 +40,7 @@ export function TaskCard({ task, onClick }) {
       <div className="card-body p-2">
         <div className="d-flex align-items-start">
           <i className="mdi mdi-drag-vertical me-2 text-muted" />
-          <div>
-            <div className="small fw-semibold">{task.title}</div>
-          </div>
+          <div className="small fw-semibold">{task.title}</div>
         </div>
       </div>
     </div>
