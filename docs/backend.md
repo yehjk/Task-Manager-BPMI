@@ -260,20 +260,9 @@ npm install
 2. Start all services:
 
 ```
-npm run services
+npm run dev:backend
 ```
 
-3. Run gateway:
-
-```
-npm run gateway
-```
-
-4. Open frontend at:
-
-```
-http://localhost:5173
-```
 
 ---
 
