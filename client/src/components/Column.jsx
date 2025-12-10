@@ -1,6 +1,6 @@
 // /client/src/components/Column.jsx
-// Visual representation of a single column in the board.
-// It is a drop target for tasks (even when the column is empty).
+// Visual representation of a single board column.
+// Acts as a drop target for tasks and renders task cards.
 
 import React from "react";
 import {
@@ -15,11 +15,12 @@ export function Column({
   tasks,
   onAddTask,
   onDeleteColumn,
+  onRenameColumn,
   onTaskClick,
 }) {
-  // Marks the tasks area as a droppable target for dnd-kit.
+  // Drop zone for tasks (separate id from sortable column id)
   const { setNodeRef, isOver } = useDroppable({
-    id: column.id,
+    id: `column-dropzone-${column.id}`,
     data: {
       type: "column",
       columnId: column.id,
@@ -31,13 +32,23 @@ export function Column({
   return (
     <div className="card h-100 shadow-sm">
       <div className="card-header bg-light d-flex justify-content-between align-items-center">
-        <div>
+        <div className="d-flex align-items-center">
           <strong>{column.title}</strong>
           <span className="badge bg-secondary ms-2">
             {sortedTasks.length}
           </span>
         </div>
+
         <div className="btn-group btn-group-sm">
+          <button
+            className="btn btn-outline-secondary"
+            type="button"
+            title="Rename column"
+            onClick={onRenameColumn}
+          >
+            <i className="mdi mdi-pencil-outline" />
+          </button>
+
           <button
             className="btn btn-outline-success"
             type="button"
@@ -46,6 +57,7 @@ export function Column({
           >
             <i className="mdi mdi-plus" />
           </button>
+
           <button
             className="btn btn-outline-danger"
             type="button"
@@ -56,6 +68,7 @@ export function Column({
           </button>
         </div>
       </div>
+
       <div
         ref={setNodeRef}
         className="card-body p-2"
@@ -65,7 +78,6 @@ export function Column({
         }}
       >
         <SortableContext
-          // IDs of tasks inside this column
           items={sortedTasks.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
         >

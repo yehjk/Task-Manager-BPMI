@@ -1,7 +1,8 @@
 // /client/src/App.jsx
-// React Router configuration for the whole app.
+// Top-level React Router configuration for the SPA.
 // - /login is public
-// - /boards and /boards/:boardId are wrapped in ProtectedRoute
+// - /boards and /boards/:boardId are protected by <ProtectedRoute>
+
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout.jsx";

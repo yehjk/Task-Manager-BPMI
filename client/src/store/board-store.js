@@ -1,7 +1,7 @@
 // /client/src/store/board-store.js
 // Global state for boards, columns, tasks and labels.
-// This store is responsible for talking to the backend API and keeping
-// the React components in sync with the current board state.
+// This store talks to the backend API and keeps React components
+// in sync with the current board state.
 
 import { create } from "zustand";
 import { apiClient } from "../api/api-client.js";
@@ -65,14 +65,7 @@ export const useBoardStore = create((set, get) => ({
     }));
   },
 
-  // ===== Active board details =====
-
-  // Sets which board is currently active.
-  setActiveBoard(boardId) {
-    set({ activeBoardId: boardId });
-  },
-
-  // Loads columns, tasks and labels for a board.
+// Loads columns, tasks and labels for a board.
   // Uses:
   //   GET /boards/:id/columns
   //   GET /boards/:id/tasks
@@ -135,6 +128,39 @@ export const useBoardStore = create((set, get) => ({
     }));
   },
 
+  // Renames a column via PATCH /columns/:id.
+  async updateColumn(columnId, title) {
+    const column = await apiClient.patch(`/columns/${columnId}`, { title });
+    set((state) => ({
+      columns: state.columns.map((c) =>
+        c.id === columnId ? column : c
+      ),
+    }));
+    return column;
+  },
+
+  // Moves a column (drag & drop) within a board.
+  async moveColumn(columnId, targetPosition) {
+    const boardId = get().activeBoardId;
+    if (!boardId) return;
+
+    const prevColumns = get().columns;
+
+    try {
+      await apiClient.patch(`/columns/${columnId}`, {
+        position: targetPosition,
+      });
+
+      const columns = await apiClient.get(`/boards/${boardId}/columns`);
+      columns.sort((a, b) => a.position - b.position);
+      set({ columns });
+    } catch (err) {
+      console.error("moveColumn failed", err);
+      set({ columns: prevColumns });
+      throw err;
+    }
+  },
+
   // ===== Tasks =====
 
   // Creates a new task in the given column.
@@ -181,25 +207,41 @@ export const useBoardStore = create((set, get) => ({
   },
 
   // ===== Labels for active board (full list) =====
-  // These are still used by loadBoard, but the UI now treats
-  // the *first* label as "board color".
+  // Board labels are simple text values (name).
+  // The first label is used for sorting on the main page.
 
-  async createLabel(boardId, name, color) {
+  async createLabel(boardId, name) {
     const label = await apiClient.post(`/boards/${boardId}/labels`, {
       name,
-      color,
     });
-    set((state) => ({ labels: [...state.labels, label] }));
+    set((state) => ({
+      labels: [...state.labels, label],
+      boards: state.boards.map((b) =>
+        b.id === boardId
+          ? { ...b, labels: [...(b.labels || []), label] }
+          : b
+      ),
+    }));
     return label;
   },
 
-  async updateLabel(boardId, labelId, name, color) {
+  async updateLabel(boardId, labelId, name) {
     const label = await apiClient.patch(
       `/boards/${boardId}/labels/${labelId}`,
-      { name, color }
+      { name }
     );
     set((state) => ({
       labels: state.labels.map((l) => (l.id === labelId ? label : l)),
+      boards: state.boards.map((b) =>
+        b.id === boardId
+          ? {
+              ...b,
+              labels: (b.labels || []).map((l) =>
+                l.id === labelId ? label : l
+              ),
+            }
+          : b
+      ),
     }));
     return label;
   },
@@ -208,48 +250,15 @@ export const useBoardStore = create((set, get) => ({
     await apiClient.del(`/boards/${boardId}/labels/${labelId}`);
     set((state) => ({
       labels: state.labels.filter((l) => l.id !== labelId),
-    }));
-  },
-
-  // ===== Board color (one color per board, based on first label) =====
-
-  // Sets a single "board color" using labels API:
-  // - if the board has no labels yet, it creates one with this color
-  // - otherwise it updates the first label and keeps only that one in boards[i].labels
-  async setBoardColor(boardId, color) {
-    const state = get();
-    const board = state.boards.find((b) => b.id === boardId);
-    if (!board) return;
-
-    const firstLabel = board.labels && board.labels[0];
-    let updatedLabel;
-
-    if (!firstLabel) {
-      // No label yet -> create one.
-      updatedLabel = await apiClient.post(`/boards/${boardId}/labels`, {
-        name: "Board color",
-        color,
-      });
-    } else {
-      // Update existing label color.
-      updatedLabel = await apiClient.patch(
-        `/boards/${boardId}/labels/${firstLabel.id}`,
-        { color }
-      );
-    }
-
-    // Update boards array so list view sees the new color.
-    set((s) => ({
-      boards: s.boards.map((b) =>
-        b.id === boardId ? { ...b, labels: [updatedLabel] } : b
+      boards: state.boards.map((b) =>
+        b.id === boardId
+          ? {
+              ...b,
+              labels: (b.labels || []).filter((l) => l.id !== labelId),
+            }
+          : b
       ),
     }));
-
-    // If active board is this board, also keep labels[] in sync.
-    const activeId = state.activeBoardId;
-    if (activeId === boardId) {
-      set({ labels: [updatedLabel] });
-    }
   },
 
   // ===== Move task (used by drag & drop) =====
@@ -263,19 +272,16 @@ export const useBoardStore = create((set, get) => ({
     const previousTasks = get().tasks;
 
     try {
-      // PATCH /tasks/:id/move
       await apiClient.patch(`/tasks/${taskId}/move`, {
         columnId: targetColumnId,
         position: targetPosition,
       });
 
-      // Reload tasks for this board to get final positions from server.
       const tasks = await apiClient.get(`/boards/${boardId}/tasks`);
       tasks.sort((a, b) => a.position - b.position);
       set({ tasks });
     } catch (err) {
       console.error("moveTask failed", err);
-      // Roll back to previous state if the request fails.
       set({ tasks: previousTasks });
       throw err;
     }

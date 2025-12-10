@@ -1,12 +1,13 @@
 // /client/src/pages/LoginPage.jsx
-// Very small login screen that calls POST /auth/login-mock.
-// On success it stores fake JWT + user in auth-store and redirects.
+// Minimal login page that calls POST /auth/login-mock and stores a demo JWT.
+
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "../store/auth-store.js";
 
 export function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const loginMock = useAuthStore((s) => s.loginMock);
   const navigate = useNavigate();
   const location = useLocation();
@@ -17,11 +18,12 @@ export function LoginPage() {
   const handleLogin = async () => {
     try {
       setLoading(true);
+      setError("");
       await loginMock();
       navigate(from, { replace: true });
     } catch (err) {
       console.error(err);
-      alert("Login failed");
+      setError("Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -32,9 +34,14 @@ export function LoginPage() {
       <div className="card shadow-sm" style={{ minWidth: 320 }}>
         <div className="card-body">
           <h5 className="card-title mb-3 text-center">Sign in (mock)</h5>
-          <p className="text-muted small mb-4 text-center">
+          <p className="text-muted small mb-3 text-center">
             Uses <code>POST /auth/login-mock</code> and stores a fake JWT.
           </p>
+          {error && (
+            <div className="alert alert-danger py-2 px-3 small">
+              {error}
+            </div>
+          )}
           <button
             className="btn btn-primary w-100"
             onClick={handleLogin}
