@@ -264,19 +264,4 @@ npm run dev:backend
 ```
 
 
----
-
-# Future Improvements
-
-- Real authentication (Google OAuth / username + password)
-- Pagination for audit logs
-- WebSockets for real-time board updates
-- Roles & permissions per board
-
----
-
-# Authors
-
-- **Backend Developer**: Nurbol Kapesh  
-- **Team**: BPMI Project, Unicorn University
 
