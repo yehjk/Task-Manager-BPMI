@@ -1,397 +1,480 @@
 // /client/src/pages/BoardsListPage.jsx
-// Page that lists all boards the user has access to.
-// Boards are rendered as cards, with sorting and CRUD via modals.
-
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { useBoardStore } from "../store/board-store.js";
+import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiClient } from "../api/api-client.js";
 import { TextInputModal, ConfirmModal } from "../components/ModalDialogs.jsx";
+import { useToast } from "../components/ToastProvider.jsx";
 
-export function BoardsListPage() {
-  const {
-    boards,
-    loadingBoards,
-    loadBoards,
-    createBoard,
-    updateBoard,
-    deleteBoard,
-  } = useBoardStore();
+function getCurrentUser() {
+  try {
+    const raw = window.localStorage.getItem("tm_user");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
-  // Modal state for creating a new board
-  const [createState, setCreateState] = useState({
+function fmtDate(v) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function waitForBoardReadable(boardId, { attempts = 8, delayMs = 120 } = {}) {
+  let lastErr = null;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await apiClient.get(`/boards/${boardId}`);
+      return true;
+    } catch (e) {
+      lastErr = e;
+      const status = e?.status || e?.response?.status;
+      if (status && status !== 404) throw e;
+      await sleep(delayMs);
+    }
+  }
+
+  if (lastErr) throw lastErr;
+  return false;
+}
+
+export default function BoardsListPage() {
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+
+  const currentUser = getCurrentUser();
+  const emailLower = (currentUser?.email || currentUser?.emailLower || "").toLowerCase();
+
+  const [boards, setBoards] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = useState("");
+
+  const [onlyOwned, setOnlyOwned] = useState(false);
+  const [onlyMember, setOnlyMember] = useState(false);
+
+  const [labelFilter, setLabelFilter] = useState("all");
+
+  const [sortBy, setSortBy] = useState("updatedAt");
+  const [sortDir, setSortDir] = useState("desc");
+
+  const [createModal, setCreateModal] = useState({
     show: false,
     name: "",
     error: "",
     submitting: false,
   });
 
-  // Modal state for renaming an existing board
-  const [renameState, setRenameState] = useState({
+  const [renameModal, setRenameModal] = useState({
     show: false,
-    board: null,
+    boardId: null,
     name: "",
     error: "",
     submitting: false,
   });
 
-  // Modal state for deleting a board
-  const [deleteState, setDeleteState] = useState({
+  const [deleteModal, setDeleteModal] = useState({
     show: false,
-    board: null,
-    submitting: false,
+    boardId: null,
+    name: "",
   });
 
-  // Default: sort by creation date (newest first)
-  const [sortBy, setSortBy] = useState("createdAt");
-  const [sortDir, setSortDir] = useState("desc"); // asc | desc
+  React.useEffect(() => {
+    let cancelled = false;
 
-  useEffect(() => {
-    loadBoards();
-  }, [loadBoards]);
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await apiClient.get("/boards");
+        if (cancelled) return;
+        setBoards(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (cancelled) return;
+        setBoards([]);
+        setError(e?.message || "Failed to load boards");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-  // ===== Create board =====
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const openCreateModal = () =>
-    setCreateState({
-      show: true,
-      name: "",
-      error: "",
-      submitting: false,
+  const labelOptions = useMemo(() => {
+    const set = new Set();
+    for (const b of boards) {
+      const label = (b.labels?.[0]?.name || "").trim();
+      if (label) set.add(label);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [boards]);
+
+  const filteredBoards = useMemo(() => {
+    const byRole = boards.filter((b) => {
+      const ownerLower = (b.ownerEmailLower || b.ownerEmail || "").toLowerCase();
+      const isOwner = ownerLower === emailLower;
+      if (onlyOwned) return isOwner;
+      if (onlyMember) return !isOwner;
+      return true;
     });
 
-  const handleCreateSubmit = async () => {
-    const name = createState.name.trim();
-    if (!name) {
-      setCreateState((s) => ({ ...s, error: "Board name cannot be empty." }));
-      return;
-    }
+    const byLabel =
+      labelFilter === "all"
+        ? byRole
+        : byRole.filter((b) => (b.labels?.[0]?.name || "").toLowerCase() === labelFilter);
 
-    try {
-      setCreateState((s) => ({ ...s, submitting: true, error: "" }));
-      await createBoard(name);
-      setCreateState({
-        show: false,
-        name: "",
-        error: "",
-        submitting: false,
-      });
-    } catch (err) {
-      console.error(err);
-      setCreateState((s) => ({
-        ...s,
-        submitting: false,
-        error: err.message || "Failed to create board.",
-      }));
-    }
-  };
+    const list = [...byLabel];
 
-  // ===== Rename board =====
+    list.sort((a, b) => {
+      if (sortBy === "name") {
+        const an = (a.name || "").toLowerCase();
+        const bn = (b.name || "").toLowerCase();
+        return sortDir === "asc" ? an.localeCompare(bn) : bn.localeCompare(an);
+      }
 
-  const openRenameModal = (board) =>
-    setRenameState({
-      show: true,
-      board,
-      name: board.name || "",
-      error: "",
-      submitting: false,
+      const getTime = (x) => {
+        const v = sortBy === "createdAt" ? x.createdAt : x.lastActivityAt || x.updatedAt;
+        return v ? new Date(v).getTime() : 0;
+      };
+
+      const ad = getTime(a);
+      const bd = getTime(b);
+      return sortDir === "asc" ? ad - bd : bd - ad;
     });
 
-  const handleRenameSubmit = async () => {
-    const name = renameState.name.trim();
-    if (!name) {
-      setRenameState((s) => ({
-        ...s,
-        error: "Board name cannot be empty.",
-      }));
-      return;
-    }
+    return list;
+  }, [boards, emailLower, labelFilter, onlyOwned, onlyMember, sortBy, sortDir]);
 
-    try {
-      setRenameState((s) => ({ ...s, submitting: true, error: "" }));
-      await updateBoard(renameState.board.id, name);
-      setRenameState({
-        show: false,
-        board: null,
-        name: "",
-        error: "",
-        submitting: false,
-      });
-    } catch (err) {
-      console.error(err);
-      setRenameState((s) => ({
-        ...s,
-        submitting: false,
-        error: err.message || "Failed to rename board.",
-      }));
-    }
-  };
-
-  // ===== Delete board =====
-
-  const openDeleteModal = (board) =>
-    setDeleteState({
-      show: true,
-      board,
-      submitting: false,
-    });
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteState.board) return;
-    try {
-      setDeleteState((s) => ({ ...s, submitting: true }));
-      await deleteBoard(deleteState.board.id);
-      setDeleteState({ show: false, board: null, submitting: false });
-    } catch (err) {
-      console.error(err);
-      setDeleteState({ show: false, board: null, submitting: false });
-    }
-  };
-
-  // ===== Sorting =====
-
-  const toggleSort = (key) => {
-    if (sortBy === key) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+  function toggleSort(next) {
+    if (sortBy === next) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
-      setSortBy(key);
-      setSortDir("asc");
+      setSortBy(next);
+      setSortDir("desc");
     }
-  };
+  }
 
-  const sortedBoards = [...boards].sort((a, b) => {
-    if (sortBy === "name") {
-      const an = (a.name || "").toLowerCase();
-      const bn = (b.name || "").toLowerCase();
-      return sortDir === "asc" ? an.localeCompare(bn) : bn.localeCompare(an);
-    }
-
-    if (sortBy === "label") {
-      const la = (a.labels?.[0]?.name || "").toLowerCase();
-      const lb = (b.labels?.[0]?.name || "").toLowerCase();
-      return sortDir === "asc" ? la.localeCompare(lb) : lb.localeCompare(la);
-    }
-
-    // createdAt by default
-    const ad = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bd = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return sortDir === "asc" ? ad - bd : bd - ad;
-  });
-
-  const renderSortIcon = (key) => {
+  function renderSortIcon(key) {
     if (sortBy !== key) return null;
-    return sortDir === "asc" ? (
-      <i className="mdi mdi-arrow-up ms-1" />
-    ) : (
-      <i className="mdi mdi-arrow-down ms-1" />
+    return (
+      <span className="ms-1">
+        <i className={sortDir === "asc" ? "mdi mdi-arrow-up" : "mdi mdi-arrow-down"} />
+      </span>
     );
+  }
+
+  const openCreate = () => setCreateModal({ show: true, name: "", error: "", submitting: false });
+
+  const submitCreate = async () => {
+    const name = createModal.name.trim();
+    if (!name) {
+      setCreateModal((s) => ({ ...s, error: "Board name cannot be empty" }));
+      return;
+    }
+
+    try {
+      setCreateModal((s) => ({ ...s, submitting: true, error: "" }));
+      const created = await apiClient.post("/boards", { name });
+
+      setBoards((prev) => [created, ...prev]);
+      showToast("Board created", { variant: "success" });
+
+      await waitForBoardReadable(created.id, { attempts: 10, delayMs: 120 });
+
+      setCreateModal({ show: false, name: "", error: "", submitting: false });
+      navigate(`/boards/${created.id}`);
+    } catch (e) {
+      const msg = e?.message || "Create failed";
+      setCreateModal((s) => ({ ...s, submitting: false, error: msg }));
+      showToast(msg, { variant: "danger" });
+    }
   };
 
-  // ===== Render =====
+  const openRename = (b) => {
+    setRenameModal({
+      show: true,
+      boardId: b.id,
+      name: b.name || "",
+      error: "",
+      submitting: false,
+    });
+  };
+
+  const submitRename = async () => {
+    const name = renameModal.name.trim();
+    if (!name) {
+      setRenameModal((s) => ({ ...s, error: "Board name cannot be empty" }));
+      return;
+    }
+
+    try {
+      setRenameModal((s) => ({ ...s, submitting: true, error: "" }));
+      const updated = await apiClient.patch(`/boards/${renameModal.boardId}`, { name });
+      setBoards((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
+      setRenameModal({ show: false, boardId: null, name: "", error: "", submitting: false });
+      showToast("Board renamed", { variant: "success" });
+    } catch (e) {
+      const msg = e?.message || "Rename failed";
+      setRenameModal((s) => ({ ...s, submitting: false, error: msg }));
+      showToast(msg, { variant: "danger" });
+    }
+  };
+
+  const openDelete = (b) => {
+    setDeleteModal({ show: true, boardId: b.id, name: b.name || "Untitled board" });
+  };
+
+  const confirmDelete = async () => {
+    const id = deleteModal.boardId;
+    if (!id) return;
+
+    try {
+      await apiClient.del(`/boards/${id}`);
+      setBoards((prev) => prev.filter((x) => x.id !== id));
+      setDeleteModal({ show: false, boardId: null, name: "" });
+      showToast("Board deleted", { variant: "info" });
+    } catch (e) {
+      showToast(e?.message || "Delete failed", { variant: "danger" });
+    }
+  };
 
   return (
-    <>
-      <div>
-        {/* Page header: title, sort controls, and "New board" button */}
-        <div className="tm-boards-header">
-          <div className="tm-boards-title">
-            <div className="d-flex align-items-center gap-2">
-              <i className="mdi mdi-view-dashboard-outline fs-5" />
-              <h4 className="mb-0">Boards</h4>
-            </div>
+    <div className="container py-3" style={{ maxWidth: "100%" }}>
+      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        <h3 className="m-0">Boards</h3>
 
-            <div className="tm-sort-group mt-2">
-              <button
-                type="button"
-                className={
-                  "btn btn-sm " +
-                  (sortBy === "name"
-                    ? "btn-secondary"
-                    : "btn-outline-secondary")
-                }
-                onClick={() => toggleSort("name")}
-              >
-                Name
-                {renderSortIcon("name")}
-              </button>
-              <button
-                type="button"
-                className={
-                  "btn btn-sm " +
-                  (sortBy === "label"
-                    ? "btn-secondary"
-                    : "btn-outline-secondary")
-                }
-                onClick={() => toggleSort("label")}
-              >
-                Label
-                {renderSortIcon("label")}
-              </button>
-              <button
-                type="button"
-                className={
-                  "btn btn-sm " +
-                  (sortBy === "createdAt"
-                    ? "btn-secondary"
-                    : "btn-outline-secondary")
-                }
-                onClick={() => toggleSort("createdAt")}
-              >
-                Created
-                {renderSortIcon("createdAt")}
-              </button>
-            </div>
-          </div>
-
-          <div>
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <div className="btn-group btn-group-sm" role="group">
             <button
-              className="btn btn-primary btn-sm"
-              onClick={openCreateModal}
-              disabled={createState.submitting}
+              type="button"
+              className={"btn " + (sortBy === "name" ? "btn-secondary" : "btn-outline-secondary")}
+              onClick={() => toggleSort("name")}
             >
-              <i className="mdi mdi-plus-circle-outline me-1" />
-              New board
+              Name{renderSortIcon("name")}
+            </button>
+            <button
+              type="button"
+              className={"btn " + (sortBy === "createdAt" ? "btn-secondary" : "btn-outline-secondary")}
+              onClick={() => toggleSort("createdAt")}
+            >
+              Created{renderSortIcon("createdAt")}
+            </button>
+            <button
+              type="button"
+              className={"btn " + (sortBy === "updatedAt" ? "btn-secondary" : "btn-outline-secondary")}
+              onClick={() => toggleSort("updatedAt")}
+            >
+              Last updated{renderSortIcon("updatedAt")}
             </button>
           </div>
+
+          <div className="btn-group btn-group-sm ms-2" role="group">
+            <button
+              type="button"
+              className={"btn " + (onlyOwned ? "btn-secondary" : "btn-outline-secondary")}
+              onClick={() => {
+                setOnlyOwned((v) => !v);
+                setOnlyMember(false);
+              }}
+            >
+              Owned
+            </button>
+            <button
+              type="button"
+              className={"btn " + (onlyMember ? "btn-secondary" : "btn-outline-secondary")}
+              onClick={() => {
+                setOnlyMember((v) => !v);
+                setOnlyOwned(false);
+              }}
+            >
+              Member
+            </button>
+          </div>
+
+          <span className="text-muted mx-1">|</span>
+
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 220 }}
+            value={labelFilter}
+            onChange={(e) => setLabelFilter(e.target.value)}
+          >
+            <option value="all">All</option>
+            {labelOptions.map((l) => (
+              <option key={l} value={l.toLowerCase()}>
+                {l}
+              </option>
+            ))}
+          </select>
+
+          <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
+            <i className="mdi mdi-plus me-1" />
+            New board
+          </button>
         </div>
-
-        {loadingBoards ? (
-          <div className="d-flex justify-content-center py-5">
-            <div className="spinner-border" role="status" />
-          </div>
-        ) : sortedBoards.length === 0 ? (
-          <div className="alert alert-info mt-3">
-            No boards yet. Click <strong>New board</strong> to create one.
-          </div>
-        ) : (
-          <div className="tm-boards-list">
-            {sortedBoards.map((b) => {
-              const labelName = b.labels?.[0]?.name || "";
-              const ownerEmail =
-                b.owner?.email || b.ownerEmail || "Unknown owner";
-              const createdAtText = b.createdAt
-                ? new Date(b.createdAt).toLocaleString()
-                : "Unknown date";
-
-              return (
-                <div key={b.id} className="card shadow-sm tm-board-card">
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-start mb-2">
-                      <div>
-                        <Link
-                          to={`/boards/${b.id}`}
-                          className="h5 mb-1 d-block"
-                        >
-                          {b.name}
-                        </Link>
-                        <div className="tm-board-meta small text-muted">
-                          <div>
-                            <i className="mdi mdi-account-outline me-1" />
-                            Owner: {ownerEmail}
-                          </div>
-                          <div>
-                            <i className="mdi mdi-calendar-clock-outline me-1" />
-                            Created: {createdAtText}
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        {labelName ? (
-                          <span className="badge bg-secondary">
-                            {labelName}
-                          </span>
-                        ) : (
-                          <span className="text-muted small">No label</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="d-flex gap-2">
-                      <button
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => openRenameModal(b)}
-                      >
-                        <i className="mdi mdi-pencil-outline me-1" />
-                        Rename
-                      </button>
-                      <button
-                        className="btn btn-outline-danger btn-sm"
-                        onClick={() => openDeleteModal(b)}
-                      >
-                        <i className="mdi mdi-delete-outline me-1" />
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
-      {/* Modal: create board */}
+      {loading ? (
+        <div className="py-4 text-muted">Loading...</div>
+      ) : error ? (
+        <div className="alert alert-danger mt-3">{error}</div>
+      ) : filteredBoards.length === 0 ? (
+        <div className="py-4 text-muted">No boards found.</div>
+      ) : (
+        <div className="d-flex flex-column gap-2 mt-3">
+          {filteredBoards.map((b) => {
+            const ownerLower = (b.ownerEmailLower || b.ownerEmail || "").toLowerCase();
+            const isOwner = ownerLower === emailLower;
+
+            const ownerText = b.ownerName ? b.ownerName : b.ownerEmail || "Unknown owner";
+            const label = (b.labels?.[0]?.name || "").trim();
+
+            const tasksCount = Number.isFinite(b.tasksCount) ? b.tasksCount : 0;
+            const doneCount = Number.isFinite(b.doneCount) ? b.doneCount : 0;
+            const membersCountRaw = Number.isFinite(b.membersCount) ? b.membersCount : 0;
+            const membersTotal = Math.max(1, membersCountRaw + 1);
+
+            const createdText = fmtDate(b.createdAt);
+            const updatedText = fmtDate(b.lastActivityAt || b.updatedAt);
+
+            const percent = tasksCount > 0 ? Math.round((doneCount / tasksCount) * 100) : 0;
+
+            const openBoard = () => navigate(`/boards/${b.id}`);
+
+            return (
+              <div
+                key={b.id}
+                className="card shadow-sm"
+                role="button"
+                tabIndex={0}
+                onClick={openBoard}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") openBoard();
+                }}
+              >
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div className="d-flex align-items-center gap-2 flex-wrap" style={{ minWidth: 0 }}>
+                      <h5 className="m-0 text-truncate" style={{ maxWidth: 520 }}>
+                        {b.name || "Untitled board"}
+                      </h5>
+
+                      {label ? <span className="badge bg-light text-dark border">{label}</span> : null}
+
+                      <span className={"badge " + (isOwner ? "bg-primary" : "bg-light text-dark border")}>
+                        {isOwner ? "owner" : "member"}
+                      </span>
+                    </div>
+
+                    {isOwner ? (
+                      <div className="d-flex gap-2 align-items-center flex-wrap" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm"
+                          onClick={() => openRename(b)}
+                          title="Rename"
+                          aria-label="Rename"
+                        >
+                          <i className="mdi mdi-pencil-outline" />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger btn-sm"
+                          onClick={() => openDelete(b)}
+                          title="Delete"
+                          aria-label="Delete"
+                        >
+                          <i className="mdi mdi-delete-outline" />
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="small mt-2 d-flex flex-wrap gap-2">
+                    <span className="badge bg-light text-dark border">
+                      <i className="mdi mdi-account-outline me-1" />
+                      {ownerText}
+                    </span>
+
+                    <span className="badge bg-light text-dark border" title={createdText}>
+  <i className="mdi mdi-calendar-outline me-1" />
+  Created: {createdText}
+</span>
+
+<span className="badge bg-light text-dark border" title={updatedText}>
+  <i className="mdi mdi-update me-1" />
+  Updated: {updatedText}
+</span>
+
+
+                    <span className="badge bg-light text-dark border">
+                      <i className="mdi mdi-account-multiple-outline me-1" />
+                      {membersTotal}
+                    </span>
+
+                    <span className="badge bg-light text-dark border">
+                      <i className="mdi mdi-format-list-checks me-1" />
+                      {tasksCount}
+                    </span>
+
+                    <span className="badge bg-light text-dark border">
+                      <i className="mdi mdi-check-circle-outline me-1" />
+                      {doneCount} ({percent}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <TextInputModal
-        show={createState.show}
+        show={createModal.show}
         title="New board"
         label="Board name"
-        value={createState.name}
-        onChange={(val) =>
-          setCreateState((s) => ({ ...s, name: val, error: "" }))
-        }
-        onCancel={() =>
-          setCreateState({
-            show: false,
-            name: "",
-            error: "",
-            submitting: false,
-          })
-        }
-        onSubmit={handleCreateSubmit}
-        submitLabel="Create"
-        submitting={createState.submitting}
-        error={createState.error}
+        value={createModal.name}
+        placeholder="e.g. Semester Project"
+        onChange={(val) => setCreateModal((s) => ({ ...s, name: val, error: "" }))}
+        onCancel={() => setCreateModal({ show: false, name: "", error: "", submitting: false })}
+        onSubmit={submitCreate}
+        submitLabel={createModal.submitting ? "Creating..." : "Create"}
+        submitting={createModal.submitting}
+        error={createModal.error}
       />
 
-      {/* Modal: rename board */}
       <TextInputModal
-        show={renameState.show}
+        show={renameModal.show}
         title="Rename board"
         label="Board name"
-        value={renameState.name}
-        onChange={(val) =>
-          setRenameState((s) => ({ ...s, name: val, error: "" }))
-        }
-        onCancel={() =>
-          setRenameState({
-            show: false,
-            board: null,
-            name: "",
-            error: "",
-            submitting: false,
-          })
-        }
-        onSubmit={handleRenameSubmit}
-        submitLabel="Save"
-        submitting={renameState.submitting}
-        error={renameState.error}
+        value={renameModal.name}
+        onChange={(val) => setRenameModal((s) => ({ ...s, name: val, error: "" }))}
+        onCancel={() => setRenameModal({ show: false, boardId: null, name: "", error: "", submitting: false })}
+        onSubmit={submitRename}
+        submitLabel={renameModal.submitting ? "Saving..." : "Save"}
+        submitting={renameModal.submitting}
+        error={renameModal.error}
       />
 
-      {/* Modal: delete board */}
       <ConfirmModal
-        show={deleteState.show}
+        show={deleteModal.show}
         title="Delete board"
-        message={
-          deleteState.board
-            ? `Delete board "${deleteState.board.name}"? All columns and tasks will be removed.`
-            : ""
-        }
-        onCancel={() =>
-          setDeleteState({ show: false, board: null, submitting: false })
-        }
-        onConfirm={handleDeleteConfirm}
-        confirmLabel={deleteState.submitting ? "Deleting..." : "Delete"}
+        message={`Delete board "${deleteModal.name}"? This will remove all tasks and invites.`}
+        onCancel={() => setDeleteModal({ show: false, boardId: null, name: "" })}
+        onConfirm={confirmDelete}
         confirmVariant="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
       />
-    </>
+    </div>
   );
 }

@@ -1,6 +1,4 @@
 // /client/src/components/ModalDialogs.jsx
-// Reusable modal components: text input modal and confirmation modal.
-
 import React from "react";
 
 export function TextInputModal({
@@ -26,20 +24,11 @@ export function TextInputModal({
       role="dialog"
       onClick={onCancel}
     >
-      <div
-        className="modal-dialog modal-sm modal-dialog-centered"
-        role="document"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="modal-dialog modal-sm modal-dialog-centered" role="document" onClick={(e) => e.stopPropagation()}>
         <div className="modal-content">
           <div className="modal-header">
             <h6 className="modal-title">{title}</h6>
-            <button
-              type="button"
-              className="btn-close"
-              onClick={onCancel}
-              aria-label="Close"
-            />
+            <button type="button" className="btn-close" onClick={onCancel} aria-label="Close" />
           </div>
 
           <div className="modal-body">
@@ -69,21 +58,11 @@ export function TextInputModal({
           </div>
 
           <div className="modal-footer">
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onCancel}
-              disabled={submitting}
-            >
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel} disabled={submitting}>
               Cancel
             </button>
 
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={onSubmit}
-              disabled={submitting}
-            >
+            <button type="button" className="btn btn-primary btn-sm" onClick={onSubmit} disabled={submitting}>
               {submitLabel}
             </button>
           </div>
@@ -115,38 +94,21 @@ export function ConfirmModal({
       role="dialog"
       onClick={onCancel}
     >
-      <div
-        className="modal-dialog modal-sm modal-dialog-centered"
-        role="document"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="modal-dialog modal-sm modal-dialog-centered" role="document" onClick={(e) => e.stopPropagation()}>
         <div className="modal-content">
           <div className="modal-header">
             <h6 className="modal-title">{title}</h6>
-            <button
-              type="button"
-              className="btn-close"
-              onClick={onCancel}
-              aria-label="Close"
-            />
+            <button type="button" className="btn-close" onClick={onCancel} aria-label="Close" />
           </div>
 
           <div className="modal-body small">{message}</div>
 
           <div className="modal-footer">
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onCancel}
-            >
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel}>
               {cancelLabel}
             </button>
 
-            <button
-              type="button"
-              className={confirmClass}
-              onClick={onConfirm}
-            >
+            <button type="button" className={confirmClass} onClick={onConfirm}>
               {confirmLabel}
             </button>
           </div>

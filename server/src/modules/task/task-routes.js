@@ -1,7 +1,4 @@
-// Task & column routes
-// Provides CRUD operations for columns and tasks, including drag & drop moves
-// and ticket-style fields (description, assigneeId).
-
+// /server/src/modules/task/task-routes.js
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { Board } from "../../db/models/Board.js";
@@ -12,25 +9,54 @@ import { addAuditEntry } from "../audit/audit-store.js";
 
 const router = express.Router();
 
-// Helper: fetch board by id or throw 404
+function emailLowerFromReq(req) {
+  const email = String(req.user?.email || "").trim();
+  return email ? email.toLowerCase() : "";
+}
+
+function ensureAuthEmail(req) {
+  const email = String(req.user?.email || "").trim();
+  const emailLower = emailLowerFromReq(req);
+  if (!emailLower) throw new HttpError(401, "AUTH_REQUIRED", "Email missing in token");
+  return { email, emailLower };
+}
+
 async function findBoard(boardId) {
   const board = await Board.findOne({ id: boardId });
-  if (!board) {
-    throw new HttpError(404, "BOARD_NOT_FOUND", "Board not found");
-  }
+  if (!board) throw new HttpError(404, "BOARD_NOT_FOUND", "Board not found");
   return board;
 }
 
-// Helper: fetch board containing a given column or throw 404
 async function findBoardByColumnId(columnId) {
   const board = await Board.findOne({ "columns.id": columnId });
-  if (!board) {
-    throw new HttpError(404, "COLUMN_NOT_FOUND", "Column not found");
-  }
+  if (!board) throw new HttpError(404, "COLUMN_NOT_FOUND", "Column not found");
   return board;
 }
 
-// Helper: normalize task positions in a column to 1..N
+function isOwner(board, emailLower) {
+  return (board.ownerEmailLower || "").toLowerCase() === emailLower;
+}
+
+function getMember(board, emailLower) {
+  return (board.members || []).find((m) => (m.emailLower || "").toLowerCase() === emailLower) || null;
+}
+
+function hasAnyAccess(board, emailLower) {
+  return isOwner(board, emailLower) || !!getMember(board, emailLower);
+}
+
+function requireBoardAccess(board, emailLower) {
+  if (!hasAnyAccess(board, emailLower)) {
+    throw new HttpError(404, "BOARD_NOT_FOUND", "Board not found");
+  }
+}
+
+function requireOwner(board, emailLower) {
+  if (!isOwner(board, emailLower)) {
+    throw new HttpError(403, "FORBIDDEN", "Only owner can perform this action");
+  }
+}
+
 async function normalizePositions(boardId, columnId) {
   const tasks = await Task.find({ boardId, columnId }).sort("position");
   for (let i = 0; i < tasks.length; i++) {
@@ -41,48 +67,53 @@ async function normalizePositions(boardId, columnId) {
   }
 }
 
-// GET /boards/:id/columns
-// Returns all columns of a board.
 router.get("/boards/:id/columns", authRequired, async (req, res, next) => {
   try {
+    const { emailLower } = ensureAuthEmail(req);
     const board = await findBoard(req.params.id);
+    requireBoardAccess(board, emailLower);
     res.json(board.columns || []);
   } catch (err) {
     next(err);
   }
 });
 
-// POST /columns { boardId, title }
-// Creates a new column at the end of the board.
 router.post("/columns", authRequired, async (req, res, next) => {
   try {
-    const { boardId, title } = req.body;
+    const { email, emailLower } = ensureAuthEmail(req);
+    const { boardId, title, isDone } = req.body;
 
-    if (!title || !title.trim()) {
-      return next(
-        new HttpError(400, "VALIDATION_ERROR", "Column title is required")
-      );
+    if (!boardId) return next(new HttpError(400, "VALIDATION_ERROR", "boardId is required"));
+    if (!title || !String(title).trim()) {
+      return next(new HttpError(400, "VALIDATION_ERROR", "Column title is required"));
     }
 
-    const board =
-      boardId != null ? await findBoard(boardId) : await Board.findOne();
-
-    if (!board) {
-      return next(new HttpError(400, "VALIDATION_ERROR", "Board not found"));
-    }
+    const board = await findBoard(boardId);
+    requireBoardAccess(board, emailLower);
+    requireOwner(board, emailLower);
 
     const currentColumns = board.columns || [];
     const position = currentColumns.length + 1;
 
     const column = {
       id: uuidv4(),
-      title: title.trim(),
+      title: String(title).trim(),
       position,
+      isDone: typeof isDone === "boolean" ? isDone : false,
     };
 
     board.columns.push(column);
     board.columns.sort((a, b) => a.position - b.position);
     await board.save();
+
+    await addAuditEntry({
+      actor: email,
+      action: "COLUMN_CREATED",
+      entity: "column",
+      entityId: column.id,
+      boardId: board.id,
+      details: { title: column.title, position: column.position, isDone: column.isDone },
+    });
 
     res.status(201).json(column);
   } catch (err) {
@@ -90,138 +121,86 @@ router.post("/columns", authRequired, async (req, res, next) => {
   }
 });
 
-// PATCH /columns/:id { title?, position? }
-// Renames a column and/or changes its position within the board.
 router.patch("/columns/:id", authRequired, async (req, res, next) => {
   try {
+    const { email, emailLower } = ensureAuthEmail(req);
+
     const columnId = req.params.id;
-    const { title, position } = req.body;
+    const { title, position, isDone } = req.body;
 
     const board = await findBoardByColumnId(columnId);
+    requireBoardAccess(board, emailLower);
+    requireOwner(board, emailLower);
+
     const columns = board.columns || [];
     const idx = columns.findIndex((c) => c.id === columnId);
-
-    if (idx === -1) {
-      return next(
-        new HttpError(404, "COLUMN_NOT_FOUND", "Column not found")
-      );
-    }
+    if (idx === -1) return next(new HttpError(404, "COLUMN_NOT_FOUND", "Column not found"));
 
     const column = columns[idx];
+    const before = { title: column.title, position: column.position, isDone: !!column.isDone };
 
-    // Rename
     if (title !== undefined) {
       const trimmed = String(title).trim();
-      if (!trimmed) {
-        return next(
-          new HttpError(
-            400,
-            "VALIDATION_ERROR",
-            "Column title cannot be empty"
-          )
-        );
-      }
+      if (!trimmed) return next(new HttpError(400, "VALIDATION_ERROR", "Column title cannot be empty"));
       column.title = trimmed;
     }
 
-    // Reorder
+    if (typeof isDone === "boolean") column.isDone = isDone;
+
     if (position !== undefined) {
       if (typeof position !== "number" || !Number.isFinite(position)) {
-        return next(
-          new HttpError(400, "VALIDATION_ERROR", "position must be a number")
-        );
+        return next(new HttpError(400, "VALIDATION_ERROR", "position must be a number"));
       }
 
-      const targetPos = Math.max(
-        1,
-        Math.min(Math.round(position), columns.length)
-      );
-
+      const targetPos = Math.max(1, Math.min(Math.round(position), columns.length));
       const [removed] = columns.splice(idx, 1);
       columns.splice(targetPos - 1, 0, removed);
-
-      columns.forEach((c, i) => {
-        c.position = i + 1;
-      });
+      columns.forEach((c, i) => (c.position = i + 1));
     }
 
     await board.save();
 
     const updated = (board.columns || []).find((c) => c.id === columnId);
+
+    await addAuditEntry({
+      actor: email,
+      action: "COLUMN_UPDATED",
+      entity: "column",
+      entityId: columnId,
+      boardId: board.id,
+      details: { before, after: { title: updated.title, position: updated.position, isDone: !!updated.isDone } },
+    });
+
     res.json(updated);
   } catch (err) {
     next(err);
   }
 });
 
-// PATCH /tasks/:id
-// Required: title. Optional: description, assigneeId.
-router.patch("/tasks/:id", authRequired, async (req, res, next) => {
-  try {
-    const { title, description, assigneeId } = req.body;
-
-    // title is required and must be non-empty
-    if (title === undefined || title === null || !String(title).trim()) {
-      return next(
-        new HttpError(
-          400,
-          "VALIDATION_ERROR",
-          "title is required and cannot be empty"
-        )
-      );
-    }
-
-    const task = await Task.findOne({ id: req.params.id });
-    if (!task) {
-      return next(new HttpError(404, "TASK_NOT_FOUND", "Task not found"));
-    }
-
-    // title
-    task.title = String(title).trim();
-
-    // description: optional, can be empty string
-    if (description !== undefined) {
-      task.description =
-        description === null || description === undefined
-          ? ""
-          : String(description);
-    }
-
-    // assigneeId: optional, string or null
-    if (assigneeId !== undefined) {
-      task.assigneeId =
-        assigneeId === null || assigneeId === ""
-          ? null
-          : String(assigneeId);
-    }
-
-    await task.save();
-
-    await addAuditEntry({
-      actor: req.user?.email || "anonymous",
-      action: "TASK_UPDATED",
-      entity: "task",
-      entityId: task.id,
-    });
-
-    res.json(task);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// DELETE /columns/:id
-// Deletes a column and all tasks inside it.
 router.delete("/columns/:id", authRequired, async (req, res, next) => {
   try {
-    const columnId = req.params.id;
+    const { email, emailLower } = ensureAuthEmail(req);
 
+    const columnId = req.params.id;
     const board = await findBoardByColumnId(columnId);
+    requireBoardAccess(board, emailLower);
+    requireOwner(board, emailLower);
+
+    const col = (board.columns || []).find((c) => c.id === columnId);
 
     board.columns = (board.columns || []).filter((c) => c.id !== columnId);
     await board.save();
 
     await Task.deleteMany({ boardId: board.id, columnId });
+
+    await addAuditEntry({
+      actor: email,
+      action: "COLUMN_DELETED",
+      entity: "column",
+      entityId: columnId,
+      boardId: board.id,
+      details: { title: col?.title || null },
+    });
 
     res.status(204).send();
   } catch (err) {
@@ -229,82 +208,55 @@ router.delete("/columns/:id", authRequired, async (req, res, next) => {
   }
 });
 
-// GET /boards/:id/tasks
-// Returns tasks for a board ordered by position.
 router.get("/boards/:id/tasks", authRequired, async (req, res, next) => {
   try {
-    const tasks = await Task.find({ boardId: req.params.id })
-      .sort("position")
-      .lean();
+    const { emailLower } = ensureAuthEmail(req);
+    const board = await findBoard(req.params.id);
+    requireBoardAccess(board, emailLower);
+
+    const tasks = await Task.find({ boardId: board.id }).sort("position").lean();
     res.json(tasks);
   } catch (err) {
     next(err);
   }
 });
 
-// POST /boards/:id/tasks
-// Creates a new task in a column.
-// Required: title, columnId. Optional: description, assigneeId.
 router.post("/boards/:id/tasks", authRequired, async (req, res, next) => {
   try {
-    const board = await findBoard(req.params.id);
-    const { title, columnId, description, assigneeId } = req.body;
+    const { email, emailLower } = ensureAuthEmail(req);
 
+    const board = await findBoard(req.params.id);
+    requireBoardAccess(board, emailLower);
+
+    const { title, columnId, description, assigneeId } = req.body;
     if (!title || !columnId) {
-      return next(
-        new HttpError(
-          400,
-          "VALIDATION_ERROR",
-          "title and columnId are required"
-        )
-      );
+      return next(new HttpError(400, "VALIDATION_ERROR", "title and columnId are required"));
     }
 
     const column = (board.columns || []).find((c) => c.id === columnId);
-    if (!column) {
-      return next(
-        new HttpError(400, "VALIDATION_ERROR", "Invalid columnId")
-      );
-    }
+    if (!column) return next(new HttpError(400, "VALIDATION_ERROR", "Invalid columnId"));
 
-    const nextPos =
-      (await Task.countDocuments({
-        boardId: board.id,
-        columnId,
-      })) + 1;
+    const nextPos = (await Task.countDocuments({ boardId: board.id, columnId })) + 1;
 
     const task = new Task({
       id: uuidv4(),
       boardId: board.id,
-      title: title.trim(),
+      title: String(title).trim(),
       columnId,
       position: nextPos,
-      description:
-        description === undefined || description === null
-          ? ""
-          : String(description),
-      assigneeId:
-        assigneeId === undefined || assigneeId === null || assigneeId === ""
-          ? null
-          : String(assigneeId),
+      description: description == null ? "" : String(description),
+      assigneeId: assigneeId == null || assigneeId === "" ? null : String(assigneeId),
     });
 
     await task.save();
 
-    const actor = req.user?.email || "anonymous";
-
     await addAuditEntry({
-      actor,
+      actor: email,
       action: "TASK_CREATED",
       entity: "task",
       entityId: task.id,
-    });
-
-    await addAuditEntry({
-      actor,
-      action: "TICKET_CREATED",
-      entity: "ticket",
-      entityId: task.id,
+      boardId: board.id,
+      details: { columnId, position: task.position, title: task.title },
     });
 
     res.status(201).json(task);
@@ -313,70 +265,52 @@ router.post("/boards/:id/tasks", authRequired, async (req, res, next) => {
   }
 });
 
-// GET /tickets/:id
-// Returns a full ticket (task) by id.
 router.get("/tickets/:id", authRequired, async (req, res, next) => {
   try {
+    const { emailLower } = ensureAuthEmail(req);
+
     const task = await Task.findOne({ id: req.params.id }).lean();
-    if (!task) {
-      return next(
-        new HttpError(404, "TICKET_NOT_FOUND", "Ticket not found")
-      );
-    }
+    if (!task) return next(new HttpError(404, "TICKET_NOT_FOUND", "Ticket not found"));
+
+    const board = await findBoard(task.boardId);
+    requireBoardAccess(board, emailLower);
+
     res.json(task);
   } catch (err) {
     next(err);
   }
 });
 
-// PATCH /tickets/:id
-// Updates ticket fields: title, description, assigneeId (all optional).
-router.patch("/tickets/:id", authRequired, async (req, res, next) => {
+router.patch("/tasks/:id", authRequired, async (req, res, next) => {
   try {
+    const { email, emailLower } = ensureAuthEmail(req);
+
     const { title, description, assigneeId } = req.body;
+    if (title === undefined || title === null || !String(title).trim()) {
+      return next(new HttpError(400, "VALIDATION_ERROR", "title is required and cannot be empty"));
+    }
 
     const task = await Task.findOne({ id: req.params.id });
-    if (!task) {
-      return next(
-        new HttpError(404, "TICKET_NOT_FOUND", "Ticket not found")
-      );
-    }
+    if (!task) return next(new HttpError(404, "TASK_NOT_FOUND", "Task not found"));
 
-    if (title !== undefined) {
-      const trimmed = String(title).trim();
-      if (!trimmed) {
-        return next(
-          new HttpError(
-            400,
-            "VALIDATION_ERROR",
-            "title cannot be empty"
-          )
-        );
-      }
-      task.title = trimmed;
-    }
+    const board = await findBoard(task.boardId);
+    requireBoardAccess(board, emailLower);
 
-    if (description !== undefined) {
-      task.description =
-        description === null || description === undefined
-          ? ""
-          : String(description);
-    }
+    const before = { title: task.title, description: task.description, assigneeId: task.assigneeId };
 
-    if (assigneeId !== undefined) {
-      task.assigneeId =
-        assigneeId === null || assigneeId === "" ? null : String(assigneeId);
-    }
+    task.title = String(title).trim();
+    if (description !== undefined) task.description = description == null ? "" : String(description);
+    if (assigneeId !== undefined) task.assigneeId = assigneeId == null || assigneeId === "" ? null : String(assigneeId);
 
     await task.save();
 
-    const actor = req.user?.email || "anonymous";
-
     await addAuditEntry({
-      actor,
-      action: "TICKET_UPDATED",
-      entity: "ticket",
+      actor: email,
+      action: "TASK_UPDATED",
+      entity: "task",
       entityId: task.id,
+      boardId: task.boardId,
+      details: { before, after: { title: task.title, description: task.description, assigneeId: task.assigneeId } },
     });
 
     res.json(task);
@@ -385,29 +319,23 @@ router.patch("/tickets/:id", authRequired, async (req, res, next) => {
   }
 });
 
-// PATCH /tasks/:id/move { columnId, position }
-// Moves a task to another column and/or position and normalizes positions.
 router.patch("/tasks/:id/move", authRequired, async (req, res, next) => {
   try {
+    const { email, emailLower } = ensureAuthEmail(req);
+
     const { columnId, position } = req.body;
 
     const task = await Task.findOne({ id: req.params.id });
-    if (!task) {
-      return next(new HttpError(404, "TASK_NOT_FOUND", "Task not found"));
-    }
+    if (!task) return next(new HttpError(404, "TASK_NOT_FOUND", "Task not found"));
 
     const board = await findBoard(task.boardId);
+    requireBoardAccess(board, emailLower);
+
+    const from = { columnId: task.columnId, position: task.position };
 
     const targetColumnId = columnId || task.columnId;
-    const targetColumn = (board.columns || []).find(
-      (c) => c.id === targetColumnId
-    );
-
-    if (!targetColumn) {
-      return next(
-        new HttpError(400, "VALIDATION_ERROR", "Invalid target columnId")
-      );
-    }
+    const targetColumn = (board.columns || []).find((c) => c.id === targetColumnId);
+    if (!targetColumn) return next(new HttpError(400, "VALIDATION_ERROR", "Invalid target columnId"));
 
     const oldColumnId = task.columnId;
 
@@ -418,10 +346,7 @@ router.patch("/tasks/:id/move", authRequired, async (req, res, next) => {
     }).sort("position");
 
     const insertPosRaw = position || tasksInNewColumn.length + 1;
-    const insertPos = Math.max(
-      1,
-      Math.min(insertPosRaw, tasksInNewColumn.length + 1)
-    );
+    const insertPos = Math.max(1, Math.min(insertPosRaw, tasksInNewColumn.length + 1));
 
     tasksInNewColumn.splice(insertPos - 1, 0, task);
     task.columnId = targetColumnId;
@@ -435,11 +360,15 @@ router.patch("/tasks/:id/move", authRequired, async (req, res, next) => {
       await normalizePositions(task.boardId, oldColumnId);
     }
 
+    const to = { columnId: task.columnId, position: task.position };
+
     await addAuditEntry({
-      actor: req.user?.email || "anonymous",
+      actor: email,
       action: "TASK_MOVED",
       entity: "task",
       entityId: task.id,
+      boardId: task.boardId,
+      details: { from, to },
     });
 
     res.json(task);
@@ -448,21 +377,34 @@ router.patch("/tasks/:id/move", authRequired, async (req, res, next) => {
   }
 });
 
-// DELETE /tasks/:id
-// Deletes a task and normalizes positions in its column.
 router.delete("/tasks/:id", authRequired, async (req, res, next) => {
   try {
-    const task = await Task.findOne({ id: req.params.id });
-    if (!task) {
-      return next(
-        new HttpError(404, "TASK_NOT_FOUND", "Task not found")
-      );
-    }
+    const { email, emailLower } = ensureAuthEmail(req);
 
-    const { boardId, columnId } = task;
+    const task = await Task.findOne({ id: req.params.id });
+    if (!task) return next(new HttpError(404, "TASK_NOT_FOUND", "Task not found"));
+
+    const board = await findBoard(task.boardId);
+    requireBoardAccess(board, emailLower);
+
+    const snapshot = {
+      boardId: task.boardId,
+      columnId: task.columnId,
+      position: task.position,
+      title: task.title,
+    };
 
     await Task.deleteOne({ id: task.id });
-    await normalizePositions(boardId, columnId);
+    await normalizePositions(snapshot.boardId, snapshot.columnId);
+
+    await addAuditEntry({
+      actor: email,
+      action: "TASK_DELETED",
+      entity: "task",
+      entityId: task.id,
+      boardId: snapshot.boardId,
+      details: snapshot,
+    });
 
     res.status(204).send();
   } catch (err) {

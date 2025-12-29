@@ -1,6 +1,4 @@
-// Lightweight HTTP error class used across the API
-// Allows throwing errors with status + code for the error handler.
-
+// /server/src/utils/httpError.js
 export class HttpError extends Error {
   constructor(status, code, message) {
     super(message);

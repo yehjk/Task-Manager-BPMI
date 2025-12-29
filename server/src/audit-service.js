@@ -1,7 +1,4 @@
-// Audit microservice
-// Provides endpoints for writing and reading audit log entries.
-// Runs as an independent Express service with its own Mongo connection.
-
+// /server/src/audit-service.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -17,14 +14,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Audit endpoints
 app.use(auditRouter);
 
-// Global 404 and error handlers
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const PORT = process.env.AUDIT_PORT || 4003;
+const PORT = process.env.PORT || process.env.AUDIT_PORT || 4003;
+
 
 async function start() {
   await connectMongo();

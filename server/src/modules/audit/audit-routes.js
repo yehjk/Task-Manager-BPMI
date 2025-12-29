@@ -1,6 +1,4 @@
-// Audit routes
-// Provides endpoints for writing and reading audit log entries.
-
+// /server/src/modules/audit/audit-routes.js
 import express from "express";
 import { addAuditEntry } from "./audit-store.js";
 import { HttpError } from "../../utils/httpError.js";
@@ -9,24 +7,15 @@ import { AuditEntry } from "../../db/models/AuditEntry.js";
 
 const router = express.Router();
 
-// POST /audit
-// Creates a new audit entry.
 router.post("/audit", authRequired, async (req, res, next) => {
   try {
-    const { action, entity, entityId, ts } = req.body;
+    const { action, entity, entityId, ts, boardId, details } = req.body;
 
     if (!action || !entity || !entityId) {
-      return next(
-        new HttpError(
-          400,
-          "VALIDATION_ERROR",
-          "action, entity and entityId are required"
-        )
-      );
+      return next(new HttpError(400, "VALIDATION_ERROR", "action, entity and entityId are required"));
     }
 
-    const actor =
-      req.body.actor || req.user?.email || "anonymous";
+    const actor = req.user?.email || "anonymous";
 
     const entry = await addAuditEntry({
       actor,
@@ -34,6 +23,8 @@ router.post("/audit", authRequired, async (req, res, next) => {
       entity,
       entityId,
       ts,
+      boardId,
+      details,
     });
 
     res.status(201).json(entry);
@@ -42,17 +33,16 @@ router.post("/audit", authRequired, async (req, res, next) => {
   }
 });
 
-// GET /audit
-// Returns audit entries filtered by entity or entityId.
 router.get("/audit", authRequired, async (req, res, next) => {
   try {
-    const { entity, entityId } = req.query;
+    const { entity, entityId, boardId } = req.query;
 
     const filter = {};
     if (entity) filter.entity = entity;
     if (entityId) filter.entityId = entityId;
+    if (boardId) filter.boardId = boardId;
 
-    const result = await AuditEntry.find(filter).lean();
+    const result = await AuditEntry.find(filter).sort({ ts: -1 }).lean();
     res.json(result);
   } catch (err) {
     next(err);
