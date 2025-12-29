@@ -1,13 +1,12 @@
-{$DOMAIN} {
+# /deploy/Caddyfile
+taskmanagerapp.org {
 
   encode zstd gzip
 
-  # API: внешне /api/..., внутри gateway ожидает /auth, /boards...
   handle_path /api/* {
     reverse_proxy gateway:3001
   }
 
-  # SPA
   root * /srv
   try_files {path} /index.html
   file_server
