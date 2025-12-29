@@ -1,0 +1,94 @@
+/* /client/src/index.css */
+:root {
+  --bs-body-font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --bs-body-font-weight: 500;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+a {
+  font-weight: 500;
+  color: #0d6efd;
+  text-decoration: none;
+}
+a:hover {
+  color: #0a58ca;
+  text-decoration: underline;
+}
+
+/* === Navbar === */
+
+.tm-navbar {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.tm-navbar-inner {
+  max-width: 960px;
+}
+
+/* IMPORTANT: НЕ трогаем кнопки !important, иначе hover ломается */
+.tm-navbar .navbar-brand,
+.tm-navbar .navbar-text,
+.tm-user-area {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-weight: 500;
+  color: #000 !important;
+}
+
+/* Outline dark hover fix */
+.tm-navbar .btn-outline-dark {
+  --bs-btn-color: #000;
+  --bs-btn-border-color: #000;
+  --bs-btn-hover-bg: #000;
+  --bs-btn-hover-border-color: #000;
+  --bs-btn-hover-color: #fff;
+}
+
+/* Main container */
+.tm-main {
+  max-width: 960px;
+}
+
+/* === Boards list === */
+.tm-boards-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.tm-boards-title {
+  display: flex;
+  flex-direction: column;
+}
+
+.tm-sort-group {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.tm-boards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tm-board-card {
+  border-radius: 0.75rem;
+}
+
+.tm-board-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}

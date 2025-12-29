@@ -1,0 +1,27 @@
+{
+  "name": "server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:auth": "node src/auth-service.js",
+    "dev:boards": "node src/boards-service.js",
+    "dev:audit": "node src/audit-service.js",
+    "dev:gateway": "node src/gateway.js",
+    "dev:backend": "concurrently \"npm run dev:auth\" \"npm run dev:boards\" \"npm run dev:audit\" \"npm run dev:gateway\""
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "http-proxy-middleware": "^3.0.5",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^9.0.1",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "nodemon": "^3.1.7"
+  }
+}
