@@ -1,6 +1,4 @@
-// Global error handler
-// Formats all thrown errors into consistent JSON responses.
-
+// /server/src/middleware/errorHandler.js
 export function errorHandler(err, _req, res, _next) {
   console.error(err);
 

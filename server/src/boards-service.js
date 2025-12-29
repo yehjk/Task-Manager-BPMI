@@ -1,7 +1,4 @@
-// Boards & Tasks microservice
-// Handles board management, columns, tasks, tickets and related operations.
-// Runs as a standalone Express service with its own Mongo connection.
-
+// /server/src/boards-service.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -20,15 +17,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Routers
 app.use(boardsRouter);
 app.use(taskRouter);
 
-// Error & fallback handlers
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const PORT = process.env.BOARDS_PORT || 4002;
+const PORT = process.env.PORT || process.env.BOARDS_PORT || 4002;
 
 async function start() {
   await connectMongo();

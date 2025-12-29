@@ -1,318 +1,414 @@
 // /client/src/components/ColumnsSection.jsx
-// Renders all columns for a board and wires drag & drop of tasks and columns.
-
-import React, { useState } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCorners,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  horizontalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-
-import { Column } from "./Column.jsx";
+import React, { useMemo, useState } from "react";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import Column from "./Column.jsx";
+import SortableColumn from "./SortableColumn.jsx";
 import { useBoardStore } from "../store/board-store.js";
+import { TaskCard } from "./TaskCard.jsx";
 import { TextInputModal, ConfirmModal } from "./ModalDialogs.jsx";
+import { useToast } from "./ToastProvider.jsx";
 
-// Wrapper that makes a column horizontally draggable in the board.
-function SortableColumnWrapper({ column, children }) {
-  const {
-    setNodeRef,
-    attributes,
-    listeners,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: column.id,
-    data: {
-      type: "column-header",
-      columnId: column.id,
-    },
+export default function ColumnsSection({ boardId, canManageColumns, canAddTask, onTaskClick }) {
+  const { showToast } = useToast();
+
+  const columns = useBoardStore((s) => s.columns);
+  const tasks = useBoardStore((s) => s.tasks);
+
+  const createColumn = useBoardStore((s) => s.createColumn);
+  const updateColumn = useBoardStore((s) => s.updateColumn);
+  const deleteColumn = useBoardStore((s) => s.deleteColumn);
+
+  const createTask = useBoardStore((s) => s.createTask);
+  const moveTask = useBoardStore((s) => s.moveTask);
+
+  const moveColumn = useBoardStore((s) => s.moveColumn);
+  const setColumnsLocal = useBoardStore((s) => s.setColumnsLocal);
+
+  const [createState, setCreateState] = useState({ show: false, title: "", isDone: false, error: "" });
+
+  const [settingsState, setSettingsState] = useState({
+    show: false,
+    columnId: null,
+    title: "",
+    isDone: false,
+    error: "",
+    saving: false,
   });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.8 : 1,
-    cursor: "grab",
-    minWidth: 280,
-    maxWidth: 330,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {children}
-    </div>
-  );
-}
-
-export function ColumnsSection({ boardId, columns, tasks, onTaskClick }) {
-  const {
-    createColumn,
-    deleteColumn,
-    createTask,
-    moveTask,
-    updateColumn,
-    moveColumn,
-  } = useBoardStore();
-
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newColumnTitle, setNewColumnTitle] = useState("");
-  const [createError, setCreateError] = useState("");
-
-  const [renameState, setRenameState] = useState({
+  const [addTaskModal, setAddTaskModal] = useState({
     show: false,
     columnId: null,
     title: "",
     error: "",
+    submitting: false,
   });
 
-  const [deleteState, setDeleteState] = useState({
+  const [deleteConfirm, setDeleteConfirm] = useState({
     show: false,
-    columnId: null,
-    title: "",
+    column: null,
+    submitting: false,
   });
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const getTasksForColumn = (columnId) =>
-    tasks
-      .filter((t) => t.columnId === columnId)
-      .sort((a, b) => a.position - b.position);
+  const columnsWithTasks = useMemo(() => {
+    const map = new Map();
+    for (const c of columns) map.set(c.id, []);
+    for (const t of tasks) {
+      const arr = map.get(t.columnId);
+      if (arr) arr.push(t);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => (a.position || 0) - (b.position || 0));
+    }
+    return columns.map((c) => ({ column: c, tasks: map.get(c.id) || [] }));
+  }, [columns, tasks]);
 
-  const handleCreateColumn = async () => {
-    const trimmed = newColumnTitle.trim();
-    if (!trimmed) {
-      setCreateError("Column title cannot be empty.");
+  const columnIds = useMemo(() => columns.map((c) => c.id), [columns]);
+
+  async function handleCreate() {
+    const title = createState.title.trim();
+    if (!title) {
+      setCreateState((s) => ({ ...s, error: "Title is required" }));
+      return;
+    }
+    try {
+      await createColumn(boardId, { title, isDone: !!createState.isDone });
+      setCreateState({ show: false, title: "", isDone: false, error: "" });
+      showToast("Column created", { variant: "success" });
+    } catch (e) {
+      const msg = e?.message || "Failed to create column";
+      setCreateState((s) => ({ ...s, error: msg }));
+      showToast(msg, { variant: "danger" });
+    }
+  }
+
+  function openSettings(column) {
+    setSettingsState({
+      show: true,
+      columnId: column.id,
+      title: column.title || "",
+      isDone: !!column.isDone,
+      error: "",
+      saving: false,
+    });
+  }
+
+  async function handleSaveSettings() {
+    const title = settingsState.title.trim();
+    if (!title) {
+      setSettingsState((s) => ({ ...s, error: "Title is required" }));
+      return;
+    }
+
+    setSettingsState((s) => ({ ...s, saving: true, error: "" }));
+    try {
+      await updateColumn(settingsState.columnId, { title, isDone: !!settingsState.isDone });
+      setSettingsState({ show: false, columnId: null, title: "", isDone: false, error: "", saving: false });
+      showToast("Column updated", { variant: "success" });
+    } catch (e) {
+      const msg = e?.message || "Failed to save column";
+      setSettingsState((s) => ({ ...s, saving: false, error: msg }));
+      showToast(msg, { variant: "danger" });
+    }
+  }
+
+  function askDeleteColumn(col) {
+    setDeleteConfirm({ show: true, column: col, submitting: false });
+  }
+
+  async function confirmDeleteColumn() {
+    const col = deleteConfirm.column;
+    if (!col?.id) {
+      setDeleteConfirm({ show: false, column: null, submitting: false });
       return;
     }
 
     try {
-      setCreateError("");
-      await createColumn(boardId, trimmed);
-      setShowCreateModal(false);
-      setNewColumnTitle("");
-    } catch (err) {
-      console.error(err);
-      setCreateError(err.message || "Failed to create column.");
+      setDeleteConfirm((s) => ({ ...s, submitting: true }));
+      await deleteColumn(col.id);
+      showToast("Column deleted", { variant: "info" });
+      setDeleteConfirm({ show: false, column: null, submitting: false });
+    } catch (e) {
+      showToast(e?.message || "Failed to delete column", { variant: "danger" });
+      setDeleteConfirm((s) => ({ ...s, submitting: false }));
+    }
+  }
+
+  const openAddTask = (column) => {
+    setAddTaskModal({ show: true, columnId: column.id, title: "", error: "", submitting: false });
+  };
+
+  const submitAddTask = async () => {
+    const title = addTaskModal.title.trim();
+    if (!title) {
+      setAddTaskModal((s) => ({ ...s, error: "Title is required" }));
+      return;
+    }
+    if (!addTaskModal.columnId) return;
+
+    try {
+      setAddTaskModal((s) => ({ ...s, submitting: true, error: "" }));
+      await createTask(boardId, { title, columnId: addTaskModal.columnId });
+      setAddTaskModal({ show: false, columnId: null, title: "", error: "", submitting: false });
+      showToast("Task created", { variant: "success" });
+    } catch (e) {
+      const msg = e?.message || "Failed to create task";
+      setAddTaskModal((s) => ({ ...s, submitting: false, error: msg }));
+      showToast(msg, { variant: "danger" });
     }
   };
 
-  const handleAddColumnClick = () => {
-    setNewColumnTitle("");
-    setCreateError("");
-    setShowCreateModal(true);
-  };
+  const closeCreate = () => setCreateState({ show: false, title: "", isDone: false, error: "" });
+  const closeSettings = () => setSettingsState({ show: false, columnId: null, title: "", isDone: false, error: "", saving: false });
+  const closeAddTask = () => setAddTaskModal({ show: false, columnId: null, title: "", error: "", submitting: false });
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
-    if (!over || !active) return;
+  const onDragEnd = async ({ active, over }) => {
+    if (!over) return;
 
-    const activeType = active.data.current?.type;
+    const activeType = active?.data?.current?.type;
 
-    // 1) Dragging a task
+    if (activeType === "column") {
+      if (!canManageColumns) return;
+      if (active.id === over.id) return;
+
+      const oldIndex = columns.findIndex((c) => c.id === active.id);
+      const newIndex = columns.findIndex((c) => c.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return;
+
+      const next = arrayMove(columns, oldIndex, newIndex).map((c, i) => ({ ...c, position: i + 1 }));
+      setColumnsLocal(next);
+
+      try {
+        await moveColumn(String(active.id), newIndex + 1);
+      } catch {}
+      return;
+    }
+
     if (activeType === "task") {
-      const activeTask = tasks.find((t) => t.id === active.id);
-      if (!activeTask) return;
+      const fromColumnId = active?.data?.current?.columnId;
+      let targetColumnId = null;
+      let targetIndex = null;
 
-      const overData = over.data.current || {};
-      let newColumnId = activeTask.columnId;
-      let newPosition = activeTask.position;
+      const overType = over?.data?.current?.type;
 
-      if (overData.type === "task") {
-        const overTask = tasks.find((t) => t.id === over.id);
-        if (!overTask) return;
+      if (overType === "task") {
+        targetColumnId = over?.data?.current?.columnId || null;
+        if (!targetColumnId) return;
 
-        newColumnId = overTask.columnId;
+        const targetTasks = tasks
+          .filter((t) => t.columnId === targetColumnId)
+          .sort((a, b) => (a.position || 0) - (b.position || 0));
+        targetIndex = targetTasks.findIndex((t) => t.id === over.id);
+        if (targetIndex < 0) targetIndex = targetTasks.length;
+      } else if (overType === "column-drop") {
+        targetColumnId = over?.data?.current?.columnId || null;
+        if (!targetColumnId) return;
 
-        const list = tasks
-          .filter((t) => t.columnId === newColumnId)
-          .sort((a, b) => a.position - b.position);
-
-        const overIndex = list.findIndex((t) => t.id === overTask.id);
-        newPosition = overIndex + 1;
+        const targetTasks = tasks
+          .filter((t) => t.columnId === targetColumnId)
+          .sort((a, b) => (a.position || 0) - (b.position || 0));
+        targetIndex = targetTasks.length;
+      } else if (overType === "column") {
+        targetColumnId = String(over.id);
+        const targetTasks = tasks
+          .filter((t) => t.columnId === targetColumnId)
+          .sort((a, b) => (a.position || 0) - (b.position || 0));
+        targetIndex = targetTasks.length;
+      } else {
+        const overId = String(over.id || "");
+        if (overId.startsWith("column-drop-")) {
+          targetColumnId = overId.replace("column-drop-", "");
+          const targetTasks = tasks
+            .filter((t) => t.columnId === targetColumnId)
+            .sort((a, b) => (a.position || 0) - (b.position || 0));
+          targetIndex = targetTasks.length;
+        }
       }
 
-      if (overData.type === "column") {
-        newColumnId = overData.columnId;
+      if (!fromColumnId || !targetColumnId || targetIndex == null) return;
 
-        const list = tasks
-          .filter((t) => t.columnId === newColumnId)
-          .sort((a, b) => a.position - b.position);
-
-        newPosition = list.length + 1;
-      }
-
-      await moveTask(activeTask.id, newColumnId, newPosition);
-      return;
-    }
-
-    // 2) Dragging a column
-    if (activeType === "column-header" && over.id && active.id !== over.id) {
-      const ordered = [...columns].sort((a, b) => a.position - b.position);
-
-      const activeIndex = ordered.findIndex((c) => c.id === active.id);
-      const overIndex = ordered.findIndex((c) => c.id === over.id);
-
-      if (activeIndex === -1 || overIndex === -1) return;
-
-      const targetPosition = overIndex + 1;
-      await moveColumn(active.id, targetPosition);
-    }
-  };
-
-  const handleRenameSubmit = async () => {
-    const trimmed = renameState.title.trim();
-    if (!trimmed) {
-      setRenameState((s) => ({
-        ...s,
-        error: "Column title cannot be empty.",
-      }));
-      return;
-    }
-
-    try {
-      await updateColumn(renameState.columnId, trimmed);
-      setRenameState({
-        show: false,
-        columnId: null,
-        title: "",
-        error: "",
-      });
-    } catch (err) {
-      console.error(err);
-      setRenameState((s) => ({
-        ...s,
-        error: err.message || "Failed to rename column.",
-      }));
-    }
-  };
-
-  const handleConfirmDeleteColumn = async () => {
-    if (!deleteState.columnId) return;
-    try {
-      await deleteColumn(deleteState.columnId);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setDeleteState({ show: false, columnId: null, title: "" });
+      try {
+        await moveTask(String(active.id), { columnId: targetColumnId, position: targetIndex + 1 });
+      } catch {}
     }
   };
 
   return (
     <>
-      {/* Header row with section title and "Add column" button */}
-      <div className="d-flex justify-content-start align-items-center mb-3 gap-3">
-        <h5 className="mb-0">Columns &amp; tasks</h5>
-        <button
-          className="btn btn-outline-primary btn-sm"
-          onClick={handleAddColumnClick}
-        >
-          <i className="mdi mdi-plus" /> Add column
-        </button>
+      <div className="d-flex align-items-center justify-content-between mb-2">
+        <h5 className="m-0">Columns</h5>
+
+        {canManageColumns ? (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setCreateState({ show: true, title: "", isDone: false, error: "" })}
+          >
+            <i className="mdi mdi-plus me-1" />
+            New column
+          </button>
+        ) : null}
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={columns.map((c) => c.id)}
-          strategy={horizontalListSortingStrategy}
-        >
-          <div className="d-flex flex-row flex-nowrap gap-3 overflow-auto pb-3">
-            {columns.map((column) => (
-              <SortableColumnWrapper key={column.id} column={column}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={columnIds} strategy={rectSortingStrategy}>
+          <div className="row g-3">
+            {columnsWithTasks.map(({ column, tasks: colTasks }) => (
+              <SortableColumn key={column.id} columnId={column.id} canDrag={!!canManageColumns}>
                 <Column
                   column={column}
-                  tasks={getTasksForColumn(column.id)}
-                  onAddTask={async () => {
-                    await createTask(boardId, column.id, "New task");
-                  }}
-                  onDeleteColumn={() =>
-                    setDeleteState({
-                      show: true,
-                      columnId: column.id,
-                      title: column.title,
-                    })
-                  }
-                  onRenameColumn={() =>
-                    setRenameState({
-                      show: true,
-                      columnId: column.id,
-                      title: column.title,
-                      error: "",
-                    })
-                  }
-                  onTaskClick={onTaskClick}
-                />
-              </SortableColumnWrapper>
+                  tasks={colTasks}
+                  canManage={!!canManageColumns}
+                  canAddTask={!!canAddTask}
+                  onAddTask={openAddTask}
+                  onOpenSettings={openSettings}
+                  onDeleteColumn={askDeleteColumn}
+                >
+                  {colTasks.map((t) => (
+                    <TaskCard key={t.id} task={t} onClick={() => onTaskClick?.(t)} />
+                  ))}
+                </Column>
+              </SortableColumn>
             ))}
           </div>
         </SortableContext>
       </DndContext>
 
-      {/* Modal for creating a new column */}
       <TextInputModal
-        show={showCreateModal}
-        title="New column"
-        label="Column title"
-        value={newColumnTitle}
-        onChange={setNewColumnTitle}
-        onCancel={() => {
-          setShowCreateModal(false);
-          setCreateError("");
-        }}
-        onSubmit={handleCreateColumn}
-        submitLabel="Create"
-        error={createError}
+        show={addTaskModal.show}
+        title="New task"
+        label="Task title"
+        value={addTaskModal.title}
+        placeholder="e.g. Fix login bug"
+        onChange={(val) => setAddTaskModal((s) => ({ ...s, title: val, error: "" }))}
+        onCancel={closeAddTask}
+        onSubmit={submitAddTask}
+        submitLabel={addTaskModal.submitting ? "Creating..." : "Create"}
+        submitting={addTaskModal.submitting}
+        error={addTaskModal.error}
       />
 
-      {/* Modal for renaming a column */}
-      <TextInputModal
-        show={renameState.show}
-        title="Rename column"
-        label="Column title"
-        value={renameState.title}
-        onChange={(val) =>
-          setRenameState((s) => ({ ...s, title: val, error: "" }))
-        }
-        onCancel={() =>
-          setRenameState({
-            show: false,
-            columnId: null,
-            title: "",
-            error: "",
-          })
-        }
-        onSubmit={handleRenameSubmit}
-        submitLabel="Save"
-        error={renameState.error}
-      />
+      {createState.show ? (
+        <div
+          className="modal fade show"
+          style={{ display: "block", background: "rgba(0,0,0,0.4)" }}
+          tabIndex="-1"
+          role="dialog"
+          onClick={closeCreate}
+        >
+          <div className="modal-dialog" role="document" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">New column</h5>
+                <button type="button" className="btn-close" aria-label="Close" onClick={closeCreate} />
+              </div>
 
-      {/* Confirmation dialog for deleting a column */}
+              <div className="modal-body">
+                {createState.error ? <div className="alert alert-danger">{createState.error}</div> : null}
+
+                <label className="form-label small fw-semibold" htmlFor="new-col-title">
+                  Title
+                </label>
+                <input
+                  id="new-col-title"
+                  className="form-control form-control-sm"
+                  value={createState.title}
+                  onChange={(e) => setCreateState((s) => ({ ...s, title: e.target.value }))}
+                />
+
+                <div className="form-check mt-3">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="new-col-done"
+                    checked={createState.isDone}
+                    onChange={(e) => setCreateState((s) => ({ ...s, isDone: e.target.checked }))}
+                  />
+                  <label className="form-check-label small" htmlFor="new-col-done">
+                    Mark as “Done” column
+                  </label>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={closeCreate}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-primary btn-sm" onClick={handleCreate}>
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {settingsState.show ? (
+        <div
+          className="modal fade show"
+          style={{ display: "block", background: "rgba(0,0,0,0.4)" }}
+          tabIndex="-1"
+          role="dialog"
+          onClick={closeSettings}
+        >
+          <div className="modal-dialog" role="document" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Column settings</h5>
+                <button type="button" className="btn-close" aria-label="Close" onClick={closeSettings} />
+              </div>
+
+              <div className="modal-body">
+                {settingsState.error ? <div className="alert alert-danger">{settingsState.error}</div> : null}
+
+                <label className="form-label small fw-semibold" htmlFor="settings-title">
+                  Title
+                </label>
+                <input
+                  id="settings-title"
+                  className="form-control form-control-sm"
+                  value={settingsState.title}
+                  onChange={(e) => setSettingsState((s) => ({ ...s, title: e.target.value }))}
+                />
+
+                <div className="form-check mt-3">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="settings-done"
+                    checked={settingsState.isDone}
+                    onChange={(e) => setSettingsState((s) => ({ ...s, isDone: e.target.checked }))}
+                  />
+                  <label className="form-check-label small" htmlFor="settings-done">
+                    Mark as “Done” column
+                  </label>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={closeSettings} disabled={settingsState.saving}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-primary btn-sm" onClick={handleSaveSettings} disabled={settingsState.saving}>
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <ConfirmModal
-        show={deleteState.show}
+        show={deleteConfirm.show}
         title="Delete column"
-        message={`Delete column "${deleteState.title}"? All tasks inside will be removed.`}
-        onCancel={() =>
-          setDeleteState({ show: false, columnId: null, title: "" })
-        }
-        onConfirm={handleConfirmDeleteColumn}
-        confirmLabel="Delete"
+        message={`Delete this column? All tasks inside will be removed.`}
+        onCancel={() => setDeleteConfirm({ show: false, column: null, submitting: false })}
+        onConfirm={confirmDeleteColumn}
         confirmVariant="danger"
+        confirmLabel={deleteConfirm.submitting ? "Deleting..." : "Delete"}
+        cancelLabel="Cancel"
       />
     </>
   );
