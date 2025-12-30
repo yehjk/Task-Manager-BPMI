@@ -1,3 +1,4 @@
+// /server/src/middleware/authRequired.js
 import jwt from "jsonwebtoken";
 import { User } from "../db/models/User.js";
 import { HttpError } from "../utils/httpError.js";

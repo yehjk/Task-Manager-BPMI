@@ -1,3 +1,4 @@
+// /client/src/pages/BoardPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useBoardStore } from "../store/board-store.js";

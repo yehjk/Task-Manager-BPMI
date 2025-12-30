@@ -1,3 +1,4 @@
+// /server/src/middleware/errorHandler.js
 // Global error handler
 // Formats all thrown errors into consistent JSON responses.
 

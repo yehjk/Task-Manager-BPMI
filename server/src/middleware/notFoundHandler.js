@@ -1,3 +1,4 @@
+// /server/src/middleware/notFoundHandler.js
 // 404 handler
 // Returns a JSON response when no matching route is found.
 

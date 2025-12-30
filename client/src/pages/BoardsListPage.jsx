@@ -1,3 +1,4 @@
+// /client/src/pages/BoardsListPage.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/api-client.js";

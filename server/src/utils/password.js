@@ -1,3 +1,5 @@
+// /server/src/utils/password.js
+// Password hashing and verification utilities
 import crypto from "crypto";
 
 const ITERATIONS = 150000;

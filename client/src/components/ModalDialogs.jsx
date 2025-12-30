@@ -1,3 +1,4 @@
+// /client/src/components/ModalDialogs.jsx
 import React from "react";
 
 export function TextInputModal({
