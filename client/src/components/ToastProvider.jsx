@@ -1,4 +1,3 @@
-// /client/src/components/ToastProvider.jsx
 import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 const ToastContext = createContext(null);
@@ -8,7 +7,7 @@ export function ToastProvider({ children }) {
 
   const showToast = useCallback((message, options = {}) => {
     const id = crypto?.randomUUID?.() || String(Date.now() + Math.random());
-    const variant = options.variant || "success";
+    const variant = options.variant || "success"; // success | danger | info | warning
     const ttl = typeof options.ttl === "number" ? options.ttl : 2500;
 
     const toast = { id, message, variant };
@@ -27,7 +26,6 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
 
-      {/* Container bottom-right */}
       <div
         style={{
           position: "fixed",
@@ -57,10 +55,10 @@ export function ToastProvider({ children }) {
                 t.variant === "success"
                   ? "mdi mdi-check-circle-outline"
                   : t.variant === "danger"
-                    ? "mdi mdi-alert-circle-outline"
-                    : t.variant === "warning"
-                      ? "mdi mdi-alert-outline"
-                      : "mdi mdi-information-outline"
+                  ? "mdi mdi-alert-circle-outline"
+                  : t.variant === "warning"
+                  ? "mdi mdi-alert-outline"
+                  : "mdi mdi-information-outline"
               }
             />
             <div className="small" style={{ lineHeight: 1.25 }}>

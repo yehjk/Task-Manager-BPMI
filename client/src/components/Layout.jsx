@@ -1,4 +1,3 @@
-// /client/src/components/Layout.jsx
 import React from "react";
 import { Outlet, Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/auth-store.js";

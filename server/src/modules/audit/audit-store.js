@@ -1,4 +1,3 @@
-// /server/src/modules/audit/audit-store.js
 import { v4 as uuidv4 } from "uuid";
 import { AuditEntry } from "../../db/models/AuditEntry.js";
 
@@ -11,7 +10,7 @@ export async function addAuditEntry({ actor, action, entity, entityId, ts, board
     entityId,
     boardId: boardId || null,
     details: details ?? null,
-    ts: ts || new Date().toISOString(),
+    ts: ts || new Date().toISOString()
   });
 
   await entry.save();

@@ -1,4 +1,3 @@
-// /client/src/main.jsx
 import "bootstrap/dist/css/bootstrap.min.css";
 import "@mdi/font/css/materialdesignicons.min.css";
 import "./index.css";

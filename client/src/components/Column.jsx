@@ -1,4 +1,3 @@
-// /client/src/components/Column.jsx
 import React from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -15,6 +14,7 @@ export default function Column({
   dragHandleProps,
 }) {
   const droppableId = `column-drop-${column.id}`;
+
   const { setNodeRef, isOver } = useDroppable({
     id: droppableId,
     data: { type: "column-drop", columnId: column.id },
@@ -75,7 +75,6 @@ export default function Column({
               >
                 <i className="mdi mdi-cog-outline" />
               </button>
-
               <button
                 type="button"
                 className="btn btn-outline-danger btn-sm"

@@ -26,7 +26,7 @@ function normEmail(raw) {
 
 function signToken(user) {
   const JWT_SECRET = requireEnv("JWT_SECRET");
-  const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
+  const expiresIn = process.env.JWT_EXPIRES_IN;
 
   return jwt.sign(
     { sub: user.id, id: user.id, email: user.email, name: user.name || "" },
@@ -263,7 +263,7 @@ router.get("/google/callback", async (req, res, next) => {
 
     const token = signToken(user);
 
-    const APP_BASE_URL = process.env.APP_BASE_URL || "http://localhost:5173";
+    const APP_BASE_URL = process.env.APP_BASE_URL;
     const redirectUrl = `${APP_BASE_URL.replace(/\/+$/, "")}/oauth-callback?token=${encodeURIComponent(token)}`;
 
     res.redirect(redirectUrl);

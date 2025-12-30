@@ -1,4 +1,3 @@
-// /client/src/store/auth-store.js
 import { create } from "zustand";
 import { apiClient } from "../api/api-client.js";
 
@@ -6,6 +5,7 @@ function decodeJwtPayload(token) {
   try {
     const part = token.split(".")[1];
     if (!part) return null;
+
     const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
     const json = decodeURIComponent(
       atob(base64)
@@ -13,6 +13,7 @@ function decodeJwtPayload(token) {
         .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
         .join("")
     );
+
     return JSON.parse(json);
   } catch {
     return null;
@@ -28,6 +29,7 @@ export const useAuthStore = create((set) => ({
     try {
       const rawUser = window.localStorage.getItem("tm_user");
       const token = window.localStorage.getItem("tm_token");
+
       if (token) {
         const user = rawUser ? JSON.parse(rawUser) : null;
         set({ user, token, isReady: true });
@@ -62,7 +64,9 @@ export const useAuthStore = create((set) => ({
   applyTokenFromOAuth(token) {
     const payload = decodeJwtPayload(token);
     if (!payload?.email) throw new Error("Invalid token");
+
     const user = { id: payload.id, name: payload.name || "", email: payload.email };
+
     window.localStorage.setItem("tm_token", token);
     window.localStorage.setItem("tm_user", JSON.stringify(user));
     set({ token, user });

@@ -1,4 +1,3 @@
-// /server/src/audit-service.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -10,7 +9,6 @@ import { connectMongo } from "./db/mongo.js";
 dotenv.config();
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -19,8 +17,7 @@ app.use(auditRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || process.env.AUDIT_PORT || 4003;
-
+const PORT = process.env.AUDIT_PORT;
 
 async function start() {
   await connectMongo();

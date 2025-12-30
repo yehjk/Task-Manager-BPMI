@@ -1,4 +1,3 @@
-// /client/src/components/TaskCard.jsx
 import React, { useRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -65,18 +64,15 @@ export function TaskCard({ task, onClick }) {
 
           <div style={{ minWidth: 0 }}>
             <div className="small fw-semibold text-truncate">{task.title}</div>
-
             <div className="d-flex gap-2 flex-wrap mt-1">
               {assignee && (
                 <span className="badge bg-light text-dark">
-                  <i className="mdi mdi-account-outline me-1" />
-                  {assignee}
+                  <i className="mdi mdi-account-outline me-1" /> {assignee}
                 </span>
               )}
               {created && (
                 <span className="badge bg-light text-dark">
-                  <i className="mdi mdi-calendar-outline me-1" />
-                  {created}
+                  <i className="mdi mdi-calendar-outline me-1" /> {created}
                 </span>
               )}
             </div>

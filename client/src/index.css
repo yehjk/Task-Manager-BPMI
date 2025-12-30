@@ -1,7 +1,5 @@
-/* /client/src/index.css */
 :root {
-  --bs-body-font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  --bs-body-font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --bs-body-font-weight: 500;
 }
 
@@ -16,13 +14,13 @@ a {
   color: #0d6efd;
   text-decoration: none;
 }
+
 a:hover {
   color: #0a58ca;
   text-decoration: underline;
 }
 
 /* === Navbar === */
-
 .tm-navbar {
   background-color: #f8f9fa;
   border-bottom: 1px solid #dee2e6;

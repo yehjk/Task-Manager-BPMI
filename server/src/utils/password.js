@@ -1,4 +1,3 @@
-// /server/src/utils/password.js
 import crypto from "crypto";
 
 const ITERATIONS = 150000;
