@@ -1,6 +1,5 @@
-// /client/src/pages/BoardPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useBoardStore } from "../store/board-store.js";
 import ColumnsSection from "../components/ColumnsSection.jsx";
 import { TaskModal } from "../components/TaskModal.jsx";
@@ -14,15 +13,32 @@ export function BoardPage() {
 
   const { boardId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
   const user = useAuthStore((s) => s.user);
 
-  const { boards, loadBoards, loadBoardDetails, loadingBoard, deleteTask, labels, createLabel, updateLabel } =
-    useBoardStore();
+  const storeBoard = useBoardStore((s) => s.board);
+  const boards = useBoardStore((s) => s.boards);
+  const loadBoards = useBoardStore((s) => s.loadBoards);
+  const loadBoardDetails = useBoardStore((s) => s.loadBoardDetails);
+  const loadingBoard = useBoardStore((s) => s.loadingBoard);
+  const deleteTask = useBoardStore((s) => s.deleteTask);
+  const labels = useBoardStore((s) => s.labels);
+  const createLabel = useBoardStore((s) => s.createLabel);
+  const updateLabel = useBoardStore((s) => s.updateLabel);
+
+  const prefetchedBoard = location.state?.board || null;
 
   const [selectedTask, setSelectedTask] = useState(null);
+  const [initialDone, setInitialDone] = useState(false);
 
-  const board = boards.find((b) => b.id === boardId);
-  const boardLabel = board?.labels?.[0]?.name || labels[0]?.name || null;
+  const board = useMemo(() => {
+    if (storeBoard?.id === boardId) return storeBoard;
+    const fromList = boards.find((b) => b.id === boardId);
+    return fromList || (prefetchedBoard?.id === boardId ? prefetchedBoard : null);
+  }, [storeBoard, boards, boardId, prefetchedBoard]);
+
+  const boardLabel = (board?.labels?.[0]?.name || labels[0]?.name || null) ?? null;
 
   const [labelModal, setLabelModal] = useState({ show: false, name: "", error: "" });
   const [inviteModal, setInviteModal] = useState({ show: false, email: "", error: "", submitting: false });
@@ -42,16 +58,32 @@ export function BoardPage() {
   });
 
   useEffect(() => {
-    if (!boards.length) loadBoards();
-    loadBoardDetails(boardId);
-  }, [boardId]);
+    let cancelled = false;
+    setInitialDone(false);
+
+    (async () => {
+      try {
+        const st = useBoardStore.getState();
+        if (!st.boards?.length) {
+          await loadBoards();
+        }
+        await loadBoardDetails(boardId);
+      } finally {
+        if (!cancelled) setInitialDone(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [boardId, loadBoards, loadBoardDetails]);
 
   const emailLower = (user?.email || "").toLowerCase();
   const isOwner = useMemo(() => {
     return ((board?.ownerEmailLower || "") + "").toLowerCase() === emailLower;
   }, [board?.ownerEmailLower, emailLower]);
 
-  if (loadingBoard && !board) {
+  if ((!initialDone || loadingBoard) && !board) {
     return (
       <div className="d-flex justify-content-center py-5">
         <div className="spinner-border" role="status" />
@@ -243,12 +275,7 @@ export function BoardPage() {
 
       <div className="row">
         <div className="col-md-12 mb-3">
-          <ColumnsSection
-            boardId={boardId}
-            onTaskClick={handleTaskClick}
-            canManageColumns={isOwner}
-            canAddTask={true}
-          />
+          <ColumnsSection boardId={boardId} onTaskClick={handleTaskClick} canManageColumns={isOwner} canAddTask={true} />
         </div>
       </div>
 
@@ -332,7 +359,10 @@ export function BoardPage() {
                     ) : (
                       <div className="d-flex flex-column gap-2">
                         {membersModal.members.map((m) => (
-                          <div key={m.emailLower || m.email} className="d-flex align-items-center justify-content-between gap-2 border rounded p-2">
+                          <div
+                            key={m.emailLower || m.email}
+                            className="d-flex align-items-center justify-content-between gap-2 border rounded p-2"
+                          >
                             <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
                               <i className="mdi mdi-account-outline" />
                               <div style={{ minWidth: 0 }}>

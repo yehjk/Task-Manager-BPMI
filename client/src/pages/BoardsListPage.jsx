@@ -1,4 +1,3 @@
-// /client/src/pages/BoardsListPage.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/api-client.js";
@@ -191,7 +190,7 @@ export default function BoardsListPage() {
       await waitForBoardReadable(created.id, { attempts: 10, delayMs: 120 });
 
       setCreateModal({ show: false, name: "", error: "", submitting: false });
-      navigate(`/boards/${created.id}`);
+      navigate(`/boards/${created.id}`, { state: { board: created } });
     } catch (e) {
       const msg = e?.message || "Create failed";
       setCreateModal((s) => ({ ...s, submitting: false, error: msg }));
@@ -406,15 +405,14 @@ export default function BoardsListPage() {
                     </span>
 
                     <span className="badge bg-light text-dark border" title={createdText}>
-  <i className="mdi mdi-calendar-outline me-1" />
-  Created: {createdText}
-</span>
+                      <i className="mdi mdi-calendar-outline me-1" />
+                      Created: {createdText}
+                    </span>
 
-<span className="badge bg-light text-dark border" title={updatedText}>
-  <i className="mdi mdi-update me-1" />
-  Updated: {updatedText}
-</span>
-
+                    <span className="badge bg-light text-dark border" title={updatedText}>
+                      <i className="mdi mdi-update me-1" />
+                      Updated: {updatedText}
+                    </span>
 
                     <span className="badge bg-light text-dark border">
                       <i className="mdi mdi-account-multiple-outline me-1" />
