@@ -265,10 +265,10 @@ Stop (Ctrl+C).
 Create unit:
 
 ```bash
-sudo nano /etc/systemd/system/taskmanager-backend.service
+sudo nano /etc/systemd/system/taskmanager.service
 ```
 
-Paste:
+Example:
 
 ```ini
 [Unit]
@@ -370,19 +370,31 @@ sudo nano /etc/caddy/Caddyfile
 Example Caddyfile (recommended for SPA + API gateway):
 
 ```caddyfile
-taskmanagerapp.org {
+taskmanagerapp.org, www.taskmanagerapp.org {
+        # tls directories
+        handle /api/auth/* {
+                uri strip_prefix /api
+                reverse_proxy 127.0.0.1:4001
+        }
 
-  # Serve frontend build (Vite)
-  root * /opt/taskmanager/repo/client/dist
-  encode gzip zstd
+        # AUDIT  
+        handle /api/audit* {
+                uri strip_prefix /api
+                reverse_proxy 127.0.0.1:4003
+        }
 
-  # API routes → gateway
-  @api path /api /api/*             /health             /auth/*             /boards/* /columns/* /tasks/* /tickets/* /invites/*             /audit/*
-  reverse_proxy @api 127.0.0.1:3001
+        # BOARDS + TASKS
+        handle /api/* {
+                uri strip_prefix /api
+                reverse_proxy 127.0.0.1:4002
+        }
 
-  # SPA fallback: if file not found, serve index.html
-  try_files {path} /index.html
-  file_server
+        # FRONTEND
+        handle {
+                root * /opt/taskmanager/repo/client/dist
+                try_files {path} /index.html
+                file_server
+        }
 }
 ```
 
