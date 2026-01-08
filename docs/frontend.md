@@ -1,4 +1,4 @@
-# Task Manager – Frontend Documentation (Updated)
+# Task Manager – Frontend Documentation
 
 ## 1. Overview
 
