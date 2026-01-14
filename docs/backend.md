@@ -86,8 +86,7 @@ server/
 │   │   └── task/
 │   │       └── task-routes.js
 │   └── utils/
-│       ├── httpError.js
-│       └── password.js
+│       └── httpError.js
 └── package.json
 ```
 
