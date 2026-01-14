@@ -35,6 +35,13 @@ function actionBadge(action) {
   return "bg-light text-dark";
 }
 
+function formatDueDate(dueDate) {
+  if (!dueDate) return "—";
+  const d = new Date(`${dueDate}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return String(dueDate);
+  return d.toLocaleDateString();
+}
+
 export function TaskModal({ task, boardId, onClose, onDelete }) {
   const { showToast } = useToast();
 
@@ -44,6 +51,8 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+
+  const [dueDate, setDueDate] = useState(""); // YYYY-MM-DD or ""
 
   const [createdAt, setCreatedAt] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -76,7 +85,8 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
       const t = d.title ? `"${d.title}"` : "task";
       const col = d.columnId ? colName(d.columnId) : null;
       const pos = d.position != null ? `#${d.position}` : null;
-      return `Created ${t}${col ? ` in "${col}"` : ""}${pos ? ` at ${pos}` : ""}.`;
+      const due = d.dueDate ? ` due ${formatDueDate(d.dueDate)}` : "";
+      return `Created ${t}${col ? ` in "${col}"` : ""}${pos ? ` at ${pos}` : ""}${due}.`;
     }
 
     if (a === "TASK_MOVED") {
@@ -86,9 +96,7 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
       const toCol = to.columnId ? colName(to.columnId) : "unknown";
       const fromPos = from.position != null ? `#${from.position}` : null;
       const toPos = to.position != null ? `#${to.position}` : null;
-      return `Moved from "${fromCol}"${fromPos ? ` (${fromPos})` : ""} to "${toCol}"${
-        toPos ? ` (${toPos})` : ""
-      }.`;
+      return `Moved from "${fromCol}"${fromPos ? ` (${fromPos})` : ""} to "${toCol}"${toPos ? ` (${toPos})` : ""}.`;
     }
 
     if (a === "TASK_UPDATED") {
@@ -100,6 +108,7 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
         if ("description" in patch) parts.push("description updated");
         if ("assigneeId" in patch)
           parts.push(patch.assigneeId ? `assignee → ${patch.assigneeId}` : "assignee removed");
+        if ("dueDate" in patch) parts.push(patch.dueDate ? `due → ${formatDueDate(patch.dueDate)}` : "due removed");
         if ("columnId" in patch) parts.push(`column → "${colName(patch.columnId)}"`);
         if ("position" in patch) parts.push(`position → #${patch.position}`);
       }
@@ -144,6 +153,8 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
         setTitle(t.title);
         setDescription(t.description || "");
         setAssigneeId(t.assigneeId || "");
+        setDueDate(t.dueDate || "");
+
         setCreatedAt(t.createdAt || null);
         setUpdatedAt(t.updatedAt || null);
       } catch (err) {
@@ -172,6 +183,7 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
       title: trimmedTitle,
       description,
       assigneeId: assigneeId || null,
+      dueDate: dueDate || null, // YYYY-MM-DD | null
     };
 
     try {
@@ -180,6 +192,7 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
       const updated = await apiClient.patch(`/tasks/${task.id}`, body);
 
       setUpdatedAt(updated.updatedAt || null);
+      setDueDate(updated.dueDate || "");
 
       if (boardId) {
         await loadBoardDetails(boardId);
@@ -198,6 +211,7 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
 
   const createdText = createdAt ? new Date(createdAt).toLocaleString() : "—";
   const updatedText = updatedAt ? new Date(updatedAt).toLocaleString() : "—";
+  const dueText = formatDueDate(dueDate);
 
   return (
     <>
@@ -231,6 +245,10 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
                   <div className="d-flex gap-3 flex-wrap mb-3">
                     <span className="badge bg-light text-dark">
                       <i className="mdi mdi-calendar-outline me-1" />
+                      Due: {dueText}
+                    </span>
+                    <span className="badge bg-light text-dark">
+                      <i className="mdi mdi-calendar-outline me-1" />
                       Created: {createdText}
                     </span>
                     <span className="badge bg-light text-dark">
@@ -247,6 +265,17 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                     />
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="form-label small fw-semibold">Due date</label>
+                    <input
+                      type="date"
+                      className="form-control form-control-sm"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                    />
+                    <div className="small text-muted mt-1">Leave empty to remove due date.</div>
                   </div>
 
                   <div className="mb-3">
@@ -354,12 +383,7 @@ export function TaskModal({ task, boardId, onClose, onDelete }) {
                 Delete task
               </button>
 
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={handleSave}
-                disabled={saving || loadingTicket}
-              >
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving || loadingTicket}>
                 {saving ? "Saving…" : "Save changes"}
               </button>
 

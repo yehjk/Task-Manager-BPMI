@@ -165,6 +165,9 @@ server/
   title: String,
   description: String,
   assigneeId: String | null,
+
+  dueDate: String | null,   // format: "YYYY-MM-DD"
+
   createdAt, updatedAt
 }
 ```
@@ -201,15 +204,16 @@ server/
 
 ### Proxy Mapping
 
-| Gateway Path | Service Target |
+| Gateway Path (public) | Service Target |
 |---|---|
-| `/auth/*` | Auth Service |
-| `/boards/*` | Boards Service |
-| `/columns/*` | Boards Service |
-| `/tasks/*` | Boards Service |
-| `/tickets/*` | Boards Service |
-| `/invites/*` | Boards Service |
-| `/audit/*` | Audit Service |
+| `/api/auth/*` | Auth Service |
+| `/api/boards/*` | Boards Service |
+| `/api/columns/*` | Boards Service |
+| `/api/tasks/*` | Boards Service |
+| `/api/tickets/*` | Boards Service |
+| `/api/invites/*` | Boards Service |
+| `/api/audit/*` | Audit Service |
+
 
 ---
 
@@ -288,15 +292,19 @@ server/
 | Method | Path | Description |
 |---|---|---|
 | GET | `/boards/:id/tasks` | List tasks (sorted by `position`) |
-| POST | `/boards/:id/tasks` | Create task |
+| POST | `/boards/:id/tasks` | Create task (supports optional `dueDate`) |
 | GET | `/tickets/:id` | Get single task by id |
-| PATCH | `/tasks/:id` | Update title/description/assigneeId |
+| PATCH | `/tasks/:id` | Update title/description/assigneeId/**dueDate** |
 | PATCH | `/tasks/:id/move` | Move task to another column and/or position (auto-normalizes positions) |
 | DELETE | `/tasks/:id` | Delete task + normalize remaining positions |
 
 **Positioning rules:**
 - Tasks are ordered per column by integer `position`.
 - On moves/deletes, the service normalizes positions so they are contiguous (1..N).
+
+**Due date rules:**
+- `dueDate` format: `YYYY-MM-DD`
+- `dueDate: null` removes due date
 
 ---
 

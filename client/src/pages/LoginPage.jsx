@@ -16,10 +16,18 @@ export function LoginPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState(""); // confirm password
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const title = useMemo(() => (mode === "login" ? "Sign in" : "Create account"), [mode]);
+
+  const toggleMode = () => {
+    setMode((m) => (m === "login" ? "register" : "login"));
+    setError("");
+    setPassword("");
+    setPassword2("");
+  };
 
   const submit = async () => {
     try {
@@ -28,14 +36,18 @@ export function LoginPage() {
 
       const e = email.trim();
       if (!e || !e.includes("@")) throw new Error("Please enter a valid email");
+
       if (!password || password.length < 6) throw new Error("Password must be at least 6 characters");
 
-      if (mode === "login") {
-        await login(e, password);
-      } else {
+      if (mode === "register") {
         const n = name.trim();
         if (!n) throw new Error("Name is required");
+
+        if (password !== password2) throw new Error("Passwords do not match");
+
         await register(n, e, password);
+      } else {
+        await login(e, password);
       }
 
       navigate(from, { replace: true });
@@ -90,7 +102,7 @@ export function LoginPage() {
             />
           </div>
 
-          <div className="mb-3">
+          <div className="mb-2">
             <label className="form-label small fw-semibold">Password</label>
             <input
               type="password"
@@ -105,6 +117,25 @@ export function LoginPage() {
             />
           </div>
 
+          {mode === "register" && (
+            <div className="mb-3">
+              <label className="form-label small fw-semibold">Repeat password</label>
+              <input
+                type="password"
+                className="form-control form-control-sm"
+                value={password2}
+                onChange={(e) => setPassword2(e.target.value)}
+                disabled={loading}
+                autoComplete="new-password"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submit();
+                }}
+              />
+            </div>
+          )}
+
+          {mode === "login" ? <div className="mb-3" /> : null}
+
           <button className="btn btn-primary w-100" onClick={submit} disabled={loading}>
             {loading ? "Please wait..." : mode === "login" ? "Login" : "Register"}
           </button>
@@ -115,15 +146,10 @@ export function LoginPage() {
           </button>
 
           <div className="d-flex justify-content-between mt-3">
-            <button
-              className="btn btn-link btn-sm p-0"
-              onClick={() => setMode((m) => (m === "login" ? "register" : "login"))}
-              disabled={loading}
-            >
+            <button className="btn btn-link btn-sm p-0" onClick={toggleMode} disabled={loading}>
               {mode === "login" ? "Create account" : "I already have an account"}
             </button>
 
-            {/* Go to app — убрали */}
             <span className="text-muted small">{mode === "login" ? "" : ""}</span>
           </div>
         </div>

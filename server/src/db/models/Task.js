@@ -12,6 +12,8 @@ const TaskSchema = new mongoose.Schema(
 
     description: { type: String, default: "" },
     assigneeId: { type: String, default: null },
+
+    dueDate: { type: String, default: null },
   },
   { timestamps: true }
 );

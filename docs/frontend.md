@@ -14,6 +14,7 @@ The frontend provides full user interaction with the system, including:
 - Task details with audit log
 - Board invitations and members management
 - Toast-based user notifications
+- Task due dates (displayed on cards and editable in ticket details)
 
 The frontend communicates with backend services exclusively through a centralized API client and is designed to work behind a reverse proxy (e.g. **Caddy**) using a relative `/api` base path.
 
@@ -83,6 +84,7 @@ Supported authentication methods:
 - `POST /auth/login`
 - `POST /auth/register`
 - JWT token + user stored in `localStorage`
+- The register form includes client-side "repeat password" confirmation (frontend validation only)
 
 #### Google OAuth
 - Frontend requests OAuth URL via `GET /auth/google/url`

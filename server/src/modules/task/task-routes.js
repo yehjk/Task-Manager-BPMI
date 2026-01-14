@@ -57,6 +57,35 @@ function requireOwner(board, emailLower) {
   }
 }
 
+function normalizeDueDate(raw) {
+  // undefined
+  if (raw === undefined) return undefined;
+
+  // null
+  if (raw === null || raw === "") return null;
+
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // expecting YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    throw new HttpError(400, "VALIDATION_ERROR", "dueDate must be in YYYY-MM-DD format");
+  }
+
+  // checking real date
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) {
+    throw new HttpError(400, "VALIDATION_ERROR", "dueDate is invalid");
+  }
+
+  const [yy, mm, dd] = s.split("-").map((x) => Number(x));
+  if (d.getFullYear() !== yy || d.getMonth() + 1 !== mm || d.getDate() !== dd) {
+    throw new HttpError(400, "VALIDATION_ERROR", "dueDate is invalid");
+  }
+
+  return s;
+}
+
 async function normalizePositions(boardId, columnId) {
   const tasks = await Task.find({ boardId, columnId }).sort("position");
   for (let i = 0; i < tasks.length; i++) {
@@ -228,13 +257,15 @@ router.post("/boards/:id/tasks", authRequired, async (req, res, next) => {
     const board = await findBoard(req.params.id);
     requireBoardAccess(board, emailLower);
 
-    const { title, columnId, description, assigneeId } = req.body;
+    const { title, columnId, description, assigneeId, dueDate } = req.body;
     if (!title || !columnId) {
       return next(new HttpError(400, "VALIDATION_ERROR", "title and columnId are required"));
     }
 
     const column = (board.columns || []).find((c) => c.id === columnId);
     if (!column) return next(new HttpError(400, "VALIDATION_ERROR", "Invalid columnId"));
+
+    const dueDateNorm = normalizeDueDate(dueDate);
 
     const nextPos = (await Task.countDocuments({ boardId: board.id, columnId })) + 1;
 
@@ -246,6 +277,7 @@ router.post("/boards/:id/tasks", authRequired, async (req, res, next) => {
       position: nextPos,
       description: description == null ? "" : String(description),
       assigneeId: assigneeId == null || assigneeId === "" ? null : String(assigneeId),
+      dueDate: dueDateNorm === undefined ? null : dueDateNorm,
     });
 
     await task.save();
@@ -256,7 +288,7 @@ router.post("/boards/:id/tasks", authRequired, async (req, res, next) => {
       entity: "task",
       entityId: task.id,
       boardId: board.id,
-      details: { columnId, position: task.position, title: task.title },
+      details: { columnId, position: task.position, title: task.title, dueDate: task.dueDate },
     });
 
     res.status(201).json(task);
@@ -285,7 +317,8 @@ router.patch("/tasks/:id", authRequired, async (req, res, next) => {
   try {
     const { email, emailLower } = ensureAuthEmail(req);
 
-    const { title, description, assigneeId } = req.body;
+    const { title, description, assigneeId, dueDate } = req.body;
+
     if (title === undefined || title === null || !String(title).trim()) {
       return next(new HttpError(400, "VALIDATION_ERROR", "title is required and cannot be empty"));
     }
@@ -296,11 +329,21 @@ router.patch("/tasks/:id", authRequired, async (req, res, next) => {
     const board = await findBoard(task.boardId);
     requireBoardAccess(board, emailLower);
 
-    const before = { title: task.title, description: task.description, assigneeId: task.assigneeId };
+    const before = {
+      title: task.title,
+      description: task.description,
+      assigneeId: task.assigneeId,
+      dueDate: task.dueDate,
+    };
 
     task.title = String(title).trim();
     if (description !== undefined) task.description = description == null ? "" : String(description);
     if (assigneeId !== undefined) task.assigneeId = assigneeId == null || assigneeId === "" ? null : String(assigneeId);
+
+    const dueDateNorm = normalizeDueDate(dueDate);
+    if (dueDateNorm !== undefined) {
+      task.dueDate = dueDateNorm;
+    }
 
     await task.save();
 
@@ -310,7 +353,15 @@ router.patch("/tasks/:id", authRequired, async (req, res, next) => {
       entity: "task",
       entityId: task.id,
       boardId: task.boardId,
-      details: { before, after: { title: task.title, description: task.description, assigneeId: task.assigneeId } },
+      details: {
+        before,
+        after: {
+          title: task.title,
+          description: task.description,
+          assigneeId: task.assigneeId,
+          dueDate: task.dueDate,
+        },
+      },
     });
 
     res.json(task);
@@ -392,6 +443,7 @@ router.delete("/tasks/:id", authRequired, async (req, res, next) => {
       columnId: task.columnId,
       position: task.position,
       title: task.title,
+      dueDate: task.dueDate,
     };
 
     await Task.deleteOne({ id: task.id });
