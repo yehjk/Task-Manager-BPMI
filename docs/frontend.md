@@ -181,7 +181,94 @@ Production build:
 npm run build
 ```
 
-## 12. Summary
+## 12. Example Route: /boards/:boardId
+
+- **Path:** `/boards/:boardId`
+- **Component:** `BoardPage`
+- **File:** `/client/src/pages/BoardPage.jsx`
+- **Access:** Protected (authenticated users only)
+
+
+### Purpose
+
+Displays a single Kanban board with its columns and tasks and provides the main workspace for task management and collaboration.
+
+
+### Inputs
+
+- **Route params:**
+  - `boardId`
+
+- **Global state (Zustand):**
+  - `useBoardStore` → board, columns, tasks, labels
+  - `useAuthStore` → current user
+
+
+### Main Responsibilities
+
+- Load board and related data
+- Render columns and tasks
+- Open task details modal
+- Allow owners to manage label, members, and columns
+
+
+### Key Operations
+
+- Load data:
+  - `loadBoards()`
+  - `loadBoardDetails(boardId)`
+
+- Task actions:
+  - Open → `TaskModal`
+  - Delete → `deleteTask(taskId)`
+
+- Owner actions:
+  - Edit label → `createLabel / updateLabel`
+  - Invite member → `POST /boards/:id/invites`
+  - Remove member → `DELETE /boards/:id/members/:emailLower`
+
+
+### Role Handling
+
+User role is resolved on the frontend:
+
+- If current user email equals board owner email → **owner**
+- Owner permissions:
+  - manage members
+  - edit label
+  - reorder and manage columns
+- Member permissions:
+  - manage tasks only
+
+
+### UI Composition
+
+Rendered child components:
+
+- `ColumnsSection` — columns, tasks, drag & drop
+- `TaskModal` — task details and audit log
+- `TextInputModal` — label edit and invite dialogs
+- `ConfirmModal` — member removal confirmation
+
+
+### Code Evidence
+
+```js
+const { boardId } = useParams();
+
+useEffect(() => {
+  loadBoards();
+  loadBoardDetails(boardId);
+}, [boardId]);
+
+<ColumnsSection
+  boardId={boardId}
+  canManageColumns={isOwner}
+/>
+```
+
+
+## 13. Summary
 
 The frontend is a production-ready MVP SPA featuring:
 
