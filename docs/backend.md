@@ -423,3 +423,179 @@ The following modules implement the above behavior:
 - `/src/audit-service.js` + `/src/modules/audit/*`
 - `/src/middleware/*`
 - `/src/db/models/*`
+
+## 15. Data / Entity Model
+
+This section describes the core entities and their relationships in a simple, “teacher-friendly” way.
+
+---
+
+### 15.1 Relationships (Cardinality)
+
+**Main model (high level):**
+
+`User < - M:N (owners + members) - > Board - 1:N -> Task`
+
+Meaning:
+
+- A **User** can have access to many **Boards**
+- A **Board** can be accessible by many **Users**
+- A **Board** contains many **Tasks**
+- Each **Task** belongs to exactly one **Board**
+
+---
+
+### 15.2 How “Owners + Members” is implemented
+
+In this project, board access is stored in **two places** inside `Board`:
+
+1) **Owner**
+- `Board.ownerEmailLower` (single value)
+- “1 board → 1 owner”
+- “1 user → many owned boards”
+
+2) **Members**
+- `Board.members[]` (array)
+- “1 board → many members”
+- “1 user → many boards as member”
+
+So overall, access is **M:N** between `User` and `Board`:
+- ownership is a special case
+- membership is the general case
+
+---
+
+### 15.3 Relationship Examples (JSON)
+
+#### Example: Board with owner + members
+```json
+{
+  "id": "board-uuid",
+  "name": "Semester Project",
+
+  "ownerEmailLower": "owner@example.com",
+
+  "members": [
+    { "emailLower": "member1@example.com", "role": "member" },
+    { "emailLower": "member2@example.com", "role": "member" }
+  ]
+}
+```
+
+#### Example: Task referencing Board + Column
+```json
+{
+  "id": "task-uuid",
+  "boardId": "board-uuid",
+  "columnId": "col-uuid",
+  "title": "Prepare demo",
+  "position": 1
+}
+```
+
+---
+
+### 15.4 Notes (storage decision)
+
+- **Board** stores `columns[]`, `labels[]`, `members[]` as **embedded arrays** (not separate collections).
+- **Task** is stored as a separate document and references:
+  - `boardId` (Board → Task is 1:N)
+  - `columnId` (Column is embedded, but tasks still reference its `id`)
+
+---
+
+## 16. Example Requests (2x commands)
+
+This section provides two example API requests in a tool-agnostic HTTP
+format. All requests are sent through the **API Gateway** under
+`/api/*`.
+
+------------------------------------------------------------------------
+
+### 16.1 Create Column (Owner only)
+
+-   **Method:** `POST`
+-   **Path:** `/api/columns`
+-   **Auth:** `Authorization: Bearer <JWT>`
+-   **Content-Type:** `application/json`
+
+#### Request body
+
+``` json
+{
+  "boardId": "<BOARD_ID>",
+  "title": "In Progress",
+  "isDone": false
+}
+```
+
+#### Response --- 201 Created
+
+``` json
+{
+  "id": "<COLUMN_ID>",
+  "title": "In Progress",
+  "position": 2,
+  "isDone": false
+}
+```
+
+#### Common errors
+
+-   `400 VALIDATION_ERROR` -- `boardId` missing or `title` empty
+-   `401 AUTH_REQUIRED` / `INVALID_TOKEN` -- missing or invalid JWT
+-   `403 FORBIDDEN` -- only board owner can create columns
+-   `404 BOARD_NOT_FOUND` -- board does not exist or user has no access
+
+------------------------------------------------------------------------
+
+### 16.2 Create Task (Board access required)
+
+-   **Method:** `POST`
+-   **Path:** `/api/boards/<BOARD_ID>/tasks`
+-   **Auth:** `Authorization: Bearer <JWT>`
+-   **Content-Type:** `application/json`
+
+#### Request body
+
+``` json
+{
+  "title": "Implement login",
+  "columnId": "<COLUMN_ID>",
+  "description": "Add basic email/password auth flow",
+  "assigneeId": null,
+  "dueDate": "2026-01-20"
+}
+```
+
+#### Response --- 201 Created
+
+``` json
+{
+  "id": "<TASK_ID>",
+  "boardId": "<BOARD_ID>",
+  "columnId": "<COLUMN_ID>",
+  "position": 1,
+  "title": "Implement login",
+  "description": "Add basic email/password auth flow",
+  "assigneeId": null,
+  "dueDate": "2026-01-20",
+  "createdAt": "<ISOString>",
+  "updatedAt": "<ISOString>"
+}
+```
+
+#### Notes
+
+-   `dueDate` must be in `YYYY-MM-DD` format.
+-   Sending `dueDate: null` removes the due date.
+
+#### Common errors
+
+-   `400 VALIDATION_ERROR` -- missing `title` or `columnId`, invalid
+    `dueDate`
+-   `401 AUTH_REQUIRED` / `INVALID_TOKEN`
+-   `404 BOARD_NOT_FOUND` -- board not found or no access
+
+------------------------------------------------------------------------
+
