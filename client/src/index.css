@@ -33,7 +33,7 @@ a:hover {
   max-width: 960px;
 }
 
-/* IMPORTANT: НЕ трогаем кнопки !important, иначе hover ломается */
+/* IMPORTANT: don't touch, unless hover wil break */
 .tm-navbar .navbar-brand,
 .tm-navbar .navbar-text,
 .tm-user-area {
