@@ -10,14 +10,20 @@ import { apiClient } from "../api/api-client.js";
 import { useToast } from "../components/ToastProvider.jsx";
 
 export function BoardPage() {
+  // Toast notifications (success/error/info) used across actions on this page
   const { showToast } = useToast();
 
+  // Route param: which board to open
   const { boardId } = useParams();
+
+  // Navigation helpers + optional prefetched state (e.g., coming from BoardsList)
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Current logged-in user (from global auth store)
   const user = useAuthStore((s) => s.user);
 
+  // Board-related global state and actions (Zustand store)
   const storeBoard = useBoardStore((s) => s.board);
   const boards = useBoardStore((s) => s.boards);
   const loadBoards = useBoardStore((s) => s.loadBoards);
@@ -28,22 +34,32 @@ export function BoardPage() {
   const createLabel = useBoardStore((s) => s.createLabel);
   const updateLabel = useBoardStore((s) => s.updateLabel);
 
+  // Optional: board object can be passed via router state to reduce initial “empty” render
   const prefetchedBoard = location.state?.board || null;
 
+  // Local UI state: selected task (for TaskModal) + initial loading guard
   const [selectedTask, setSelectedTask] = useState(null);
   const [initialDone, setInitialDone] = useState(false);
 
+  // Resolve the board from:
+  // 1) detailed store board if it matches current id
+  // 2) boards list
+  // 3) prefetched board (router state)
+  // This avoids flicker and supports fast navigation between boards.
   const board = useMemo(() => {
     if (storeBoard?.id === boardId) return storeBoard;
     const fromList = boards.find((b) => b.id === boardId);
     return fromList || (prefetchedBoard?.id === boardId ? prefetchedBoard : null);
   }, [storeBoard, boards, boardId, prefetchedBoard]);
 
+  // Board label: prefer board-scoped label if present, fallback to store labels
   const boardLabel = (board?.labels?.[0]?.name || labels[0]?.name || null) ?? null;
 
+  // Modals / dialogs state (local UI)
   const [labelModal, setLabelModal] = useState({ show: false, name: "", error: "" });
   const [inviteModal, setInviteModal] = useState({ show: false, email: "", error: "", submitting: false });
 
+  // Members modal state contains fetched data from backend
   const [membersModal, setMembersModal] = useState({
     show: false,
     loading: false,
@@ -52,12 +68,17 @@ export function BoardPage() {
     members: [],
   });
 
+  // Confirmation dialog state for “kick member”
   const [kickConfirm, setKickConfirm] = useState({
     show: false,
     emailLower: "",
     label: "",
   });
 
+  // Data loading lifecycle:
+  // - ensures boards list exists (used for fallback)
+  // - always loads detailed board data by boardId
+  // - uses a cancellation flag to avoid setState after unmount
   useEffect(() => {
     let cancelled = false;
     setInitialDone(false);
@@ -79,11 +100,14 @@ export function BoardPage() {
     };
   }, [boardId, loadBoards, loadBoardDetails]);
 
+  // Role resolution (owner vs member) is done on the client:
+  // owner if current user emailLower equals board.ownerEmailLower
   const emailLower = (user?.email || "").toLowerCase();
   const isOwner = useMemo(() => {
     return ((board?.ownerEmailLower || "") + "").toLowerCase() === emailLower;
   }, [board?.ownerEmailLower, emailLower]);
 
+  // Loading state: show spinner while initial fetch is pending
   if ((!initialDone || loadingBoard) && !board) {
     return (
       <div className="d-flex justify-content-center py-5">
@@ -92,6 +116,7 @@ export function BoardPage() {
     );
   }
 
+  // Not found state: user has no access or board does not exist
   if (!board) {
     return (
       <div className="alert alert-danger mt-3">
@@ -103,8 +128,10 @@ export function BoardPage() {
     );
   }
 
+  // Task modal open
   const handleTaskClick = (task) => setSelectedTask(task);
 
+  // Task delete uses store action, then closes modal and shows toast
   const handleTaskDelete = async () => {
     if (!selectedTask) return;
     try {
@@ -114,11 +141,14 @@ export function BoardPage() {
     setSelectedTask(null);
   };
 
+  // Owner-only: open label editor
   const openEditLabelModal = () => {
     const current = boardLabel || "";
     setLabelModal({ show: true, name: current, error: "" });
   };
 
+  // Owner-only: create or update the board label (board-scoped label stored in Board.labels[])
+  // After success, reload board details to refresh UI.
   const handleLabelSubmit = async () => {
     const name = labelModal.name.trim();
     if (!name) {
@@ -141,8 +171,11 @@ export function BoardPage() {
     }
   };
 
+  // Owner-only: open invite modal
   const openInvite = () => setInviteModal({ show: true, email: "", error: "", submitting: false });
 
+  // Owner-only: send invite by calling backend endpoint:
+  // POST /boards/:id/invites (gateway: /api/boards/:id/invites)
   const sendInvite = async () => {
     const email = inviteModal.email.trim();
     if (!email || !email.includes("@")) {
@@ -161,6 +194,8 @@ export function BoardPage() {
     }
   };
 
+  // Members list: fetched from backend:
+  // GET /boards/:id/members
   const loadMembers = async () => {
     try {
       setMembersModal((s) => ({ ...s, show: true, loading: true, error: "" }));
@@ -180,13 +215,18 @@ export function BoardPage() {
     }
   };
 
+  // Close members modal
   const closeMembers = () => setMembersModal({ show: false, loading: false, error: "", owner: null, members: [] });
 
+  // Owner-only: open “kick member” confirmation dialog
   const requestKick = (m) => {
     const label = (m?.name || m?.email || m?.emailLower || "").trim();
     setKickConfirm({ show: true, emailLower: m.emailLower, label });
   };
 
+  // Owner-only: remove member via backend:
+  // DELETE /boards/:id/members/:emailLower
+  // After success, refresh members list and board details.
   const doKick = async () => {
     const emailLowerToKick = kickConfirm.emailLower;
     if (!emailLowerToKick) return;
@@ -202,11 +242,13 @@ export function BoardPage() {
     }
   };
 
+  // Small UI helpers for header display
   const ownerDisplay = board.ownerName ? board.ownerName : board.ownerEmail || "Unknown owner";
   const createdAtText = board.createdAt ? new Date(board.createdAt).toLocaleString() : "Unknown date";
 
   return (
     <>
+      {/* Board header: name + metadata + actions (owner actions are conditionally rendered) */}
       <div className="text-center mb-4">
         <h4 className="mb-1 d-flex justify-content-center align-items-center">
           <i className="mdi mdi-view-kanban-outline me-2" />
@@ -247,6 +289,10 @@ export function BoardPage() {
           </span>
         </div>
 
+        {/* Action buttons:
+            - owner can edit label and invite members
+            - everyone can open members modal
+            - back navigation */}
         <div className="d-flex justify-content-center align-items-center gap-2 mt-1 flex-wrap">
           {isOwner && (
             <>
@@ -274,16 +320,20 @@ export function BoardPage() {
         </div>
       </div>
 
+      {/* Main workspace: columns + tasks + drag & drop.
+          Permissions are passed down (owner can manage columns). */}
       <div className="row">
         <div className="col-md-12 mb-3">
           <ColumnsSection boardId={boardId} onTaskClick={handleTaskClick} canManageColumns={isOwner} canAddTask={true} />
         </div>
       </div>
 
+      {/* Task details dialog (includes delete action) */}
       {selectedTask && (
         <TaskModal task={selectedTask} boardId={boardId} onClose={() => setSelectedTask(null)} onDelete={handleTaskDelete} />
       )}
 
+      {/* Label edit modal (owner-only action) */}
       <TextInputModal
         show={labelModal.show}
         title="Edit board label"
@@ -296,6 +346,7 @@ export function BoardPage() {
         error={labelModal.error}
       />
 
+      {/* Invite modal (owner-only action) */}
       <TextInputModal
         show={inviteModal.show}
         title="Invite member"
@@ -309,6 +360,8 @@ export function BoardPage() {
         error={inviteModal.error}
       />
 
+      {/* Members modal: shows owner and members list.
+          If current user is owner, allows removing members. */}
       {membersModal.show ? (
         <div
           className="modal fade show"
@@ -403,6 +456,7 @@ export function BoardPage() {
         </div>
       ) : null}
 
+      {/* Kick confirmation (owner-only action) */}
       <ConfirmModal
         show={kickConfirm.show}
         title="Remove member"
